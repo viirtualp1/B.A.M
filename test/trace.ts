@@ -1,0 +1,27 @@
+import { Game } from '../src/game/engine'
+import { STEP, T } from '../src/game/constants'
+import { ui } from '../src/game/store'
+import type { Action } from '../src/game/input'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any
+
+export function trace(level: number, tx: number, ty: number, segs: [number, Action[]][], setup?: (g: Game) => void): Game {
+  const g = new Game()
+  g.newGame(level)
+  const p = g.player
+  p.x = tx * T + 7
+  p.y = (ty + 1) * T - p.h
+  setup?.(g)
+  let tt = 0
+  for (const [d, hold] of segs) {
+    hold.forEach((a) => g.input.press(a))
+    for (let i = 0; i < Math.round(d / STEP); i++) {
+      ;(g as Any).update(STEP)
+      g.input.endStep()
+      tt += STEP
+      if (i % 6 === 0) console.log(`t=${tt.toFixed(2)} x=${(p.x / T).toFixed(2)} y=${(p.y / T).toFixed(2)} vx=${p.vx.toFixed(0)} vy=${p.vy.toFixed(0)} g=${p.grounded} sw=${g.sw} dash=${p.canDash} hearts=${ui.hearts} [${hold.join(',')}]`)
+    }
+    hold.forEach((a) => g.input.release(a))
+  }
+  return g
+}

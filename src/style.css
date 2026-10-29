@@ -1,0 +1,31 @@
+:root {
+  --ink: #3d2b45;
+  --paper: #fffaf4;
+  --pink: #ff7fae;
+  --pink-soft: #ffd1e4;
+  --blue: #76c2ff;
+  --gold: #ffcf3a;
+  --shadow: 0 6px 0 rgba(61, 43, 69, 0.18);
+  --font: 'Nunito', 'Mali', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  background: #2d2140;
+  color: var(--ink);
+  font-family: var(--font);
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+}
+button { font-family: inherit; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
