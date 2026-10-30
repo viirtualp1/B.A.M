@@ -18,7 +18,27 @@ export const ui = reactive({
   justRescued: null as CatName | null,
   muted: false,
   savedLevel: 0,
+  gamepad: false,
+  uiScale: loadUiScale(),
 })
+
+function loadUiScale(): number {
+  try {
+    const v = Number(localStorage.getItem('billion-million-ui-scale'))
+    return v >= 0.8 && v <= 1.3 ? v : 1
+  } catch {
+    return 1
+  }
+}
+
+export function saveUiScale(v: number): void {
+  ui.uiScale = v
+  try {
+    localStorage.setItem('billion-million-ui-scale', String(v))
+  } catch {
+    // ignore
+  }
+}
 
 const SAVE_KEY = 'billion-million-progress'
 

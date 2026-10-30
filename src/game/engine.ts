@@ -132,6 +132,8 @@ export class Game {
       const dt = Math.min(0.1, (now - this.last) / 1000)
       this.last = now
       this.acc += dt
+      const pad = this.input.pollGamepads()
+      if (pad !== ui.gamepad) ui.gamepad = pad
       let steps = 0
       while (this.acc >= STEP && steps < 8) {
         this.update(STEP)
@@ -430,6 +432,7 @@ export class Game {
       return
     }
     if (I.hit('pause')) this.togglePause()
+    else if (ui.screen === 'paused' && I.hit('confirm')) this.togglePause()
     if (ui.screen === 'paused') return
 
     if (ui.screen === 'clear') {

@@ -6,22 +6,44 @@ import { t } from '../game/i18n'
 
 const props = defineProps<{ input: Input }>()
 
-// Stick: one finger on the left pad picks left/right (and up/down to aim the dash).
-const stick = reactive({ id: -1, kx: 0, ky: 0 })
+/*
+ * Layout follows what mobile action games settled on (Genshin, Brawl Stars, Dead Cells):
+ * a floating stick that spawns under the left thumb, and a thumb arc on the right —
+ * the main action (Jump) biggest in the corner, secondary actions orbiting it.
+ */
+
+// Floating stick: appears where the left thumb lands, anywhere in the left zone.
+const stick = reactive({ id: -1, ox: 0, oy: 0, kx: 0, ky: 0 })
 const stickHeld = new Set<Action>()
-const DEAD = 0.32
+const DEAD = 0.3
 
 function setStick(dirs: Action[]): void {
   for (const a of [...stickHeld]) if (!dirs.includes(a)) { stickHeld.delete(a); props.input.release(a) }
   for (const a of dirs) if (!stickHeld.has(a)) { stickHeld.add(a); props.input.press(a) }
 }
 
-function moveStick(e: PointerEvent): void {
+function stickRadius(): number {
+  return (document.querySelector('.stick-base') as HTMLElement | null)?.offsetWidth ?? 130
+}
+
+function zoneDown(e: PointerEvent): void {
+  if (stick.id !== -1) return
+  const zone = e.currentTarget as HTMLElement
+  zone.setPointerCapture(e.pointerId)
+  const r = zone.getBoundingClientRect()
+  const half = stickRadius() / 2
+  stick.id = e.pointerId
+  stick.ox = Math.max(half + 4, Math.min(r.width - half - 4, e.clientX - r.left))
+  stick.oy = Math.max(half + 4, Math.min(r.height - half - 4, e.clientY - r.top))
+  zoneMove(e)
+}
+
+function zoneMove(e: PointerEvent): void {
   if (e.pointerId !== stick.id) return
-  const el = e.currentTarget as HTMLElement
-  const r = el.getBoundingClientRect()
-  const nx = ((e.clientX - r.left) / r.width) * 2 - 1
-  const ny = ((e.clientY - r.top) / r.height) * 2 - 1
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const half = stickRadius() / 2
+  const nx = (e.clientX - r.left - stick.ox) / half
+  const ny = (e.clientY - r.top - stick.oy) / half
   const len = Math.hypot(nx, ny)
   const s = len > 1 ? 1 / len : 1
   stick.kx = nx * s
@@ -34,13 +56,7 @@ function moveStick(e: PointerEvent): void {
   setStick(dirs)
 }
 
-function stickDown(e: PointerEvent): void {
-  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-  stick.id = e.pointerId
-  moveStick(e)
-}
-
-function stickUp(e: PointerEvent): void {
+function zoneUp(e: PointerEvent): void {
   if (e.pointerId !== stick.id) return
   stick.id = -1
   stick.kx = 0
@@ -48,11 +64,13 @@ function stickUp(e: PointerEvent): void {
   setStick([])
 }
 
+const pressedBtn = reactive(new Set<Action>())
 const buttons = new Map<number, Action>()
 
 function btnDown(e: PointerEvent, a: Action): void {
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   buttons.set(e.pointerId, a)
+  pressedBtn.add(a)
   props.input.press(a)
   buzz('tap')
 }
@@ -61,90 +79,153 @@ function btnUp(e: PointerEvent): void {
   const a = buttons.get(e.pointerId)
   if (!a) return
   buttons.delete(e.pointerId)
+  pressedBtn.delete(a)
   props.input.release(a)
 }
 </script>
 
 <template>
   <div class="touch">
-    <div
-      class="stick"
-      aria-label="Move"
-      @pointerdown="stickDown"
-      @pointermove="moveStick"
-      @pointerup="stickUp"
-      @pointercancel="stickUp"
-    >
-      <span class="arrow l">◀</span><span class="arrow r">▶</span><span class="arrow u">▲</span><span class="arrow d">▼</span>
-      <div class="knob" :style="{ transform: `translate(${stick.kx * 34}px, ${stick.ky * 34}px)` }" />
+    <div class="zone" @pointerdown="zoneDown" @pointermove="zoneMove" @pointerup="zoneUp" @pointercancel="zoneUp">
+      <div
+        class="stick-base"
+        :class="{ active: stick.id !== -1 }"
+        :style="stick.id !== -1 ? { left: `${stick.ox}px`, top: `${stick.oy}px`, bottom: 'auto' } : undefined"
+      >
+        <div class="knob" :style="{ transform: `translate(calc(-50% + ${stick.kx * 80}%), calc(-50% + ${stick.ky * 80}%))` }" />
+      </div>
     </div>
-    <div class="acts">
-      <button class="btn yarn" @pointerdown="btnDown($event, 'yarn')" @pointerup="btnUp" @pointercancel="btnUp">{{ t('btnYarn') }}</button>
-      <button class="btn dash" @pointerdown="btnDown($event, 'dash')" @pointerup="btnUp" @pointercancel="btnUp">{{ t('btnDash') }}</button>
-      <button class="btn jump" @pointerdown="btnDown($event, 'jump')" @pointerup="btnUp" @pointercancel="btnUp">{{ t('btnJump') }}</button>
+
+    <div class="arc">
+      <button
+        class="btn jump"
+        :class="{ down: pressedBtn.has('jump') }"
+        :aria-label="t('btnJump')"
+        @pointerdown="btnDown($event, 'jump')" @pointerup="btnUp" @pointercancel="btnUp"
+      >
+        <svg viewBox="0 0 24 24"><path d="M12 4 4 13h5v7h6v-7h5z" /></svg>
+      </button>
+      <button
+        class="btn dash"
+        :class="{ down: pressedBtn.has('dash') }"
+        :aria-label="t('btnDash')"
+        @pointerdown="btnDown($event, 'dash')" @pointerup="btnUp" @pointercancel="btnUp"
+      >
+        <svg viewBox="0 0 24 24"><path d="M3 7h8l-2-3h3l4 8-4 8H9l2-3H3l2-5z" /><path d="M14 4h3l4 8-4 8h-3l4-8z" /></svg>
+      </button>
+      <button
+        class="btn yarn"
+        :class="{ down: pressedBtn.has('yarn') }"
+        :aria-label="t('btnYarn')"
+        @pointerdown="btnDown($event, 'yarn')" @pointerup="btnUp" @pointercancel="btnUp"
+      >
+        <svg viewBox="0 0 24 24">
+          <circle cx="11" cy="13" r="7" />
+          <path d="M5.5 9.5c3 1 7 1 11-1M4.5 14c4 1.5 9 1 12.5-1.5M8 6.5c-1 4 0 9 3 12.5M13 6c1.5 3.5 1.5 8.5-1 12.5" fill="none" />
+          <path d="M17 8c2-2 4-3 5-3" fill="none" />
+        </svg>
+      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
 .touch {
+  /* Sizes track screen height so they feel the same on every phone; --ui-scale is the player's S/M/L choice. */
+  --s: var(--ui-scale, 1);
+  --jump: clamp(70px, calc(21vh * var(--s)), 104px);
+  --sub: calc(var(--jump) * 0.74);
+  --stick: clamp(110px, calc(33vh * var(--s)), 160px);
+  --edge-x: max(22px, calc(env(safe-area-inset-right, 0px) + 8px));
+  --edge-y: max(16px, env(safe-area-inset-bottom, 0px));
   position: absolute;
-  inset: auto 0 0 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  padding: 0 max(18px, env(safe-area-inset-right, 0px)) max(14px, env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px));
+  inset: 0;
   pointer-events: none;
 }
-.stick {
-  position: relative;
-  width: 132px;
-  height: 132px;
-  border-radius: 50%;
-  background: rgba(255, 250, 244, 0.35);
-  border: 3px solid rgba(61, 43, 69, 0.55);
+.zone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 45%;
+  height: 72%;
   pointer-events: auto;
   touch-action: none;
 }
-.arrow { position: absolute; font-size: 13px; color: rgba(61, 43, 69, 0.6); font-weight: 900; }
-.l { left: 10px; top: 50%; transform: translateY(-50%); }
-.r { right: 10px; top: 50%; transform: translateY(-50%); }
-.u { top: 8px; left: 50%; transform: translateX(-50%); }
-.d { bottom: 8px; left: 50%; transform: translateX(-50%); }
+.stick-base {
+  position: absolute;
+  left: calc(max(22px, env(safe-area-inset-left, 0px) + 8px) + var(--stick) / 2);
+  bottom: calc(var(--edge-y) + var(--stick) / 2);
+  width: var(--stick);
+  height: var(--stick);
+  transform: translate(-50%, 50%);
+  border-radius: 50%;
+  background: rgba(255, 250, 244, 0.22);
+  border: 2.5px solid rgba(61, 43, 69, 0.35);
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.stick-base.active { transform: translate(-50%, -50%); opacity: 1; background: rgba(255, 250, 244, 0.3); }
 .knob {
   position: absolute;
-  left: calc(50% - 30px);
-  top: calc(50% - 30px);
-  width: 60px;
-  height: 60px;
+  left: 50%;
+  top: 50%;
+  width: 44%;
+  height: 44%;
   border-radius: 50%;
-  background: var(--paper);
+  background: rgba(255, 250, 244, 0.92);
   border: 3px solid var(--ink);
-  box-shadow: var(--shadow);
-  pointer-events: none;
+  box-shadow: 0 4px 0 rgba(61, 43, 69, 0.25);
 }
-.acts {
-  display: grid;
-  grid-template-columns: auto auto;
-  grid-template-rows: auto auto;
-  gap: 10px 12px;
-  align-items: end;
+
+/* Thumb arc anchored on the Jump button's centre. */
+.arc {
+  position: absolute;
+  right: calc(var(--edge-x) + var(--jump) / 2);
+  bottom: calc(var(--edge-y) + var(--jump) / 2);
+  width: 0;
+  height: 0;
   pointer-events: auto;
 }
 .btn {
+  position: absolute;
+  display: grid;
+  place-items: center;
   border-radius: 50%;
   border: 3px solid var(--ink);
-  color: var(--ink);
-  font-weight: 900;
-  font-size: 12px;
-  touch-action: none;
-  box-shadow: var(--shadow);
-  width: 66px;
-  height: 66px;
   padding: 0;
+  touch-action: none;
+  box-shadow: 0 4px 0 rgba(61, 43, 69, 0.3);
+  transform: translate(-50%, -50%);
+  transition: transform 0.06s, box-shadow 0.06s, opacity 0.1s;
+  opacity: 0.82;
 }
-.btn:active { transform: translateY(3px); box-shadow: none; }
-.yarn { grid-column: 1; grid-row: 1; background: rgba(118, 194, 255, 0.85); }
-.dash { grid-column: 1; grid-row: 2; background: rgba(255, 216, 74, 0.88); }
-.jump { grid-column: 2; grid-row: 1 / span 2; width: 86px; height: 86px; font-size: 14px; background: rgba(255, 127, 174, 0.9); color: #fff; text-shadow: 0 1px 0 var(--ink); }
+.btn::after {
+  /* invisible padding so near-misses still count */
+  content: '';
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+}
+.btn.down { transform: translate(-50%, -50%) scale(0.9); box-shadow: 0 1px 0 rgba(61, 43, 69, 0.3); opacity: 1; }
+.btn svg { width: 46%; height: 46%; fill: #fff; stroke: var(--ink); stroke-width: 1.6; stroke-linejoin: round; }
+.jump { width: var(--jump); height: var(--jump); left: 0; top: 0; background: #ff7fae; }
+.dash {
+  width: var(--sub);
+  height: var(--sub);
+  /* left of Jump, a touch lower than horizontal so the thumb rolls onto it */
+  left: calc((var(--jump) / 2 + var(--sub) / 2 + 10px) * -0.985);
+  top: calc((var(--jump) / 2 + var(--sub) / 2 + 10px) * 0.17);
+  background: #ffcf3a;
+}
+.dash svg { fill: #fff; }
+.yarn {
+  width: var(--sub);
+  height: var(--sub);
+  /* up-left of Jump, at ~125° */
+  left: calc((var(--jump) / 2 + var(--sub) / 2 + 10px) * -0.57);
+  top: calc((var(--jump) / 2 + var(--sub) / 2 + 10px) * -0.82);
+  background: #76c2ff;
+}
+.yarn svg { fill: #ffd1e4; }
+.yarn svg path { stroke: #ff7fae; stroke-width: 1.4; }
 </style>

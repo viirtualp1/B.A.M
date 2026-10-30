@@ -85,9 +85,14 @@ defineEmits<{ pause: []; mute: [] }>()
   padding-top: 8px;
   white-space: nowrap;
 }
-@media (max-height: 460px) {
-  .chip { height: 32px; font-size: 14px; padding: 0 9px; border-width: 2.5px; }
-  .heart { width: 18px; height: 16px; }
+/* Phones: size from screen height so chips read clearly but stay out of the way; 44px+ tap targets per Apple HIG. */
+@media (pointer: coarse) {
+  .hud { --h: clamp(34px, calc(10vh * var(--ui-scale, 1)), 42px); padding-top: max(8px, env(safe-area-inset-top, 0px)); }
+  .group { gap: calc(var(--h) * 0.2); }
+  .chip { height: var(--h); border-radius: calc(var(--h) / 2); font-size: calc(var(--h) * 0.42); padding: 0 calc(var(--h) * 0.3); }
+  .heart { width: calc(var(--h) * 0.55); height: calc(var(--h) * 0.5); }
+  .candy { width: calc(var(--h) * 0.78); height: calc(var(--h) * 0.45); }
+  .icon { min-width: max(44px, var(--h)); height: max(44px, var(--h)); border-radius: 50%; font-size: calc(var(--h) * 0.4); }
 }
 @media (max-width: 900px) {
   .level { display: none; }

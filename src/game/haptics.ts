@@ -1,7 +1,8 @@
 // Vibration on Android via navigator.vibrate; on iPhone (Safari 18+) by toggling a hidden
 // <input switch>, which makes iOS fire its native "selection" haptic.
 let label: HTMLLabelElement | null = null
-export const haptics = { enabled: true }
+/** padIndex ≥ 0 while the player is using a controller: buzzes go to its rumble motors instead. */
+export const haptics = { enabled: true, padIndex: -1 }
 
 function iosSwitch(): HTMLLabelElement | null {
   if (label) return label
@@ -28,9 +29,30 @@ const PATTERNS: Record<Buzz, number[]> = {
   success: [20, 60, 20, 60, 40],
 }
 
+const RUMBLE: Record<Buzz, [number, number, number]> = {
+  tap: [40, 0, 0.35],
+  light: [60, 0.1, 0.5],
+  medium: [90, 0.45, 0.6],
+  heavy: [200, 1, 0.8],
+  success: [450, 0.6, 0.9],
+}
+
+function rumble(kind: Buzz): boolean {
+  const gp = navigator.getGamepads?.()[haptics.padIndex]
+  const act = (gp as (Gamepad & { vibrationActuator?: GamepadHapticActuator | null }) | null)?.vibrationActuator
+  if (!act?.playEffect) return false
+  const [duration, strongMagnitude, weakMagnitude] = RUMBLE[kind]
+  act.playEffect('dual-rumble', { duration, strongMagnitude, weakMagnitude }).catch(() => undefined)
+  return true
+}
+
 export function buzz(kind: Buzz): void {
   if (!haptics.enabled || typeof navigator === 'undefined') return
   try {
+    if (haptics.padIndex >= 0) {
+      rumble(kind)
+      return
+    }
     if ('vibrate' in navigator && typeof navigator.vibrate === 'function') {
       navigator.vibrate(PATTERNS[kind])
       return

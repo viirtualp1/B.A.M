@@ -2,7 +2,7 @@
 import { computed, markRaw, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Game } from './game/engine'
 import { audio } from './game/audio'
-import { ui } from './game/store'
+import { saveUiScale, ui } from './game/store'
 import { haptics, buzz } from './game/haptics'
 import { i18n, setLocale, t, type Locale, type TextKey } from './game/i18n'
 import GameHud from './components/GameHud.vue'
@@ -45,6 +45,13 @@ function toggleHaptics(): void {
   buzz('tap')
 }
 
+const SIZES: [string, number][] = [['S', 0.85], ['M', 1], ['L', 1.15]]
+
+function pickSize(v: number): void {
+  saveUiScale(v)
+  buzz('tap')
+}
+
 function checkOrientation(): void {
   portrait.value = isTouch && window.innerHeight > window.innerWidth
 }
@@ -77,7 +84,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="stage">
+  <main class="stage" :style="{ '--ui-scale': ui.uiScale }">
     <canvas ref="canvas" class="view" />
 
     <GameHud v-if="playing" @pause="game.togglePause()" @mute="game.toggleMute()" />
@@ -101,7 +108,13 @@ onBeforeUnmount(() => {
         <button v-if="ui.savedLevel > 0" class="cta" @click="start(ui.savedLevel)">{{ t('continue', { n: ui.savedLevel + 1 }) }}</button>
         <button :class="ui.savedLevel > 0 ? 'ghost' : 'cta'" @click="start(0)">{{ ui.savedLevel > 0 ? t('newGame') : t('play') }}</button>
       </div>
-      <dl v-if="!isTouch" class="keys">
+      <dl v-if="ui.gamepad" class="keys">
+        <div><dt>✕</dt><dd>{{ t('jump') }}</dd></div>
+        <div><dt>□ / R1</dt><dd>{{ t('dash') }}</dd></div>
+        <div><dt>○ / L1</dt><dd>{{ t('yarn') }}</dd></div>
+        <div><dt>Options</dt><dd>{{ t('pause') }}</dd></div>
+      </dl>
+      <dl v-else-if="!isTouch" class="keys">
         <div><dt>← →</dt><dd>{{ t('run') }}</dd></div>
         <div><dt>Space</dt><dd>{{ t('jump') }}</dd></div>
         <div><dt>Shift / X</dt><dd>{{ t('dash') }}</dd></div>
@@ -120,6 +133,12 @@ onBeforeUnmount(() => {
           <button v-if="isTouch" class="pill" :class="{ on: hapticsOn }" @click="toggleHaptics">{{ t('vibration') }}</button>
           <button class="pill" :class="{ on: i18n.locale === 'en' }" @click="pickLocale('en')">EN</button>
           <button class="pill" :class="{ on: i18n.locale === 'th' }" @click="pickLocale('th')">ไทย</button>
+        </div>
+        <div v-if="isTouch && !ui.gamepad" class="setting">
+          <span>{{ t('controlsSize') }}</span>
+          <div class="toggles">
+            <button v-for="[label, v] in SIZES" :key="label" class="pill" :class="{ on: ui.uiScale === v }" @click="pickSize(v)">{{ label }}</button>
+          </div>
         </div>
         <button class="ghost" @click="toTitle">{{ t('menu') }}</button>
       </div>
@@ -151,7 +170,7 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <TouchControls v-if="isTouch && ui.screen === 'play'" :input="game.input" />
+    <TouchControls v-if="isTouch && !ui.gamepad && ui.screen === 'play'" :input="game.input" />
 
     <section v-if="portrait" class="screen rotate">
       <div class="phone" aria-hidden="true" />
@@ -280,6 +299,8 @@ h1 .amp { color: var(--gold); }
   gap: 12px;
   align-items: stretch;
   min-width: min(320px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
   padding: 24px 28px 28px;
   background: var(--paper);
   border: 4px solid var(--ink);
@@ -338,6 +359,7 @@ h1 .amp { color: var(--gold); }
   cursor: pointer;
 }
 .langs button.on { background: var(--pink); color: #fff; }
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 800; }
 .toggles { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .pill { border: 2.5px solid var(--ink); opacity: 0.5; }
 .pill.on { opacity: 1; background: var(--pink-soft); }
