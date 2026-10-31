@@ -3,6 +3,7 @@ import { reactive } from 'vue'
 import type { Action, Input } from '../game/input'
 import { buzz } from '../game/haptics'
 import { t } from '../game/i18n'
+import { ui } from '../game/store'
 
 const props = defineProps<{ input: Input }>()
 
@@ -71,6 +72,7 @@ function btnDown(e: PointerEvent, a: Action): void {
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   buttons.set(e.pointerId, a)
   pressedBtn.add(a)
+  ui.inputMode = 'touch'
   props.input.press(a)
   buzz('tap')
 }
@@ -107,7 +109,7 @@ function btnUp(e: PointerEvent): void {
       </button>
       <button
         class="btn dash"
-        :class="{ down: pressedBtn.has('dash') }"
+        :class="{ down: pressedBtn.has('dash'), cooling: !ui.dashReady }"
         :aria-label="t('btnDash')"
         @pointerdown="btnDown($event, 'dash')" @pointerup="btnUp" @pointercancel="btnUp"
       >
@@ -218,6 +220,7 @@ function btnUp(e: PointerEvent): void {
   background: #ffcf3a;
 }
 .dash svg { fill: #fff; }
+.dash.cooling { filter: grayscale(0.9); opacity: 0.55; }
 .yarn {
   width: var(--sub);
   height: var(--sub);

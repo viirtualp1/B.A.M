@@ -1,8 +1,10 @@
 import { T } from './constants'
 import type { Game } from './engine'
 import type { Palette } from './levels'
-import { INK, drawBee, drawCandy, drawCat, drawFrog, drawGem, drawGrumble, drawHeart, drawPlatform, drawRosie, drawSeed, drawShooter, drawSpiky, drawStar } from './sprites'
-import { t, type TextKey } from './i18n'
+import { INK, drawBoss, drawKitten, drawBee, drawCandy, drawCat, drawFrog, drawGem, drawGrumble, drawHeart, drawPlatform, drawRosie, drawSeed, drawShooter, drawSpiky, drawStar } from './sprites'
+import { t } from './i18n'
+import { HINTS, drawToken, tokenWidth, type Token } from './hints'
+import { costumeOf, saveState } from './save'
 import type { Enemy } from './engine'
 import { ui } from './store'
 
@@ -141,6 +143,23 @@ function drawGround(ctx: Ctx, g: Game, tx: number, ty: number, pal: Palette): vo
     ctx.fillStyle = pal.grassLight
     rr(ctx, x + (lf ? 0 : 5), y - 1, T - (lf ? 0 : 5) - (rt ? 0 : 5), 4, 2)
     ctx.fill()
+    // grass tufts sway in the wind and lean away as Rosie runs through them
+    const p = g.player
+    ctx.strokeStyle = pal.grass
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    for (const off of [8 + (h % 9), 26 + ((h >> 5) % 8)]) {
+      const gx = x + off
+      let lean = Math.sin(g.time * 2 + gx * 0.05) * 0.15
+      const dx = gx - (p.x + p.w / 2)
+      if (Math.abs(dx) < 28 && Math.abs(p.y + p.h - y) < 12) lean += Math.sign(dx) * 0.7 * (1 - Math.abs(dx) / 28)
+      for (const k of [-1, 1]) {
+        ctx.beginPath()
+        ctx.moveTo(gx + k * 2, y)
+        ctx.quadraticCurveTo(gx + k * 3 + lean * 4, y - 5, gx + k * 4 + lean * 9, y - 9)
+        ctx.stroke()
+      }
+    }
     if (h % 7 === 0) {
       // tiny flower
       ctx.fillStyle = h % 2 ? '#ffffff' : '#ffb0d0'
@@ -569,6 +588,7 @@ function drawPlayer(ctx: Ctx, g: Game): void {
   drawRosie(ctx, p.x + p.w / 2, p.y + p.h, {
     facing: p.facing, sx: p.sx, sy: p.sy, runT: p.runT, grounded: p.grounded, vy: p.vy,
     canDash: p.canDash && p.dashCd <= 0, alpha: flicker ? 0.35 : 1, blink: g.time % 3.4 < 0.12,
+    costume: costumeOf(saveState.data), hover: p.hoverT > 0,
   })
 }
 
@@ -620,8 +640,12 @@ function drawTitleScene(ctx: Ctx, g: Game): void {
 // ───────────────────────── main ─────────────────────────
 
 export function render(ctx: Ctx, g: Game): void {
-  if (ui.screen === 'title' || ui.screen === 'end') {
+  if (ui.screen === 'title' || ui.screen === 'slots') {
     drawTitleScene(ctx, g)
+    return
+  }
+  if (ui.screen === 'hub' || ui.screen === 'end') {
+    drawHomeScene(ctx, g)
     return
   }
   const pal = g.level.palette
@@ -642,57 +666,118 @@ export function render(ctx: Ctx, g: Game): void {
   for (const pl of g.platforms) drawPlatform(ctx, pl.x, pl.y, pl.w, pl.h)
   if (g.key && !g.key.taken) drawKey(ctx, g, g.key.x, g.key.y)
   drawCage(ctx, g)
+  for (const kt of g.kittens) if (!kt.found) drawSecretKitten(ctx, kt.x, kt.y, kt.idx, kt.t)
   for (const e of g.enemies) drawEnemy(ctx, e)
+  if (g.boss) drawBossAll(ctx, g)
   for (const sd of g.seeds) drawSeed(ctx, sd.x, sd.y, sd.t)
   drawFollowers(ctx, g)
   drawPlayer(ctx, g)
   drawParticles(ctx, g)
   if (g.signNear) {
     const sg = g.signNear.sign
-    bubble(ctx, sg.x * T + T / 2, (sg.y + 1) * T - 46, t(sg.text), g.signNear.a, g)
+    hintBubble(ctx, sg.x * T + T / 2, (sg.y + 1) * T - 46, HINTS[sg.hint], g.signNear.a, g)
   }
-  if (g.cage && !g.cage.open && g.lockedTipT > 0) bubble(ctx, g.cage.x, g.cage.y - 112, t('locked'), Math.min(1, g.lockedTipT * 2), g)
+  if (g.cage && !g.cage.open && g.lockedTipT > 0) hintBubble(ctx, g.cage.x, g.cage.y - 112, HINTS.locked, Math.min(1, g.lockedTipT * 2), g)
+  ctx.restore()
+  drawPointer(ctx, g)
+  drawIris(ctx, g)
+}
+
+function drawSecretKitten(ctx: Ctx, x: number, y: number, idx: number, t: number): void {
+  if (Math.sin(t * 3 + idx) > 0.6) drawStar(ctx, x + 12, y - 30, 4, t * 2, '#fff6a8')
+  drawKitten(ctx, x, y, idx, t)
+}
+
+function drawBossAll(ctx: Ctx, g: Game): void {
+  const b = g.boss!
+  for (const w of g.waves) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.arc(w.x, (g.H - 2) * T, 16, Math.PI, 0)
+    ctx.stroke()
+    ctx.strokeStyle = INK
+    ctx.lineWidth = 2
+    ctx.stroke()
+  }
+  for (const d of g.drops) {
+    ctx.beginPath()
+    ctx.moveTo(d.x, d.y - 10)
+    ctx.quadraticCurveTo(d.x + 7, d.y + 2, d.x, d.y + 6)
+    ctx.quadraticCurveTo(d.x - 7, d.y + 2, d.x, d.y - 10)
+    ctx.fillStyle = '#8fd0ff'
+    ctx.fill()
+    ctx.lineWidth = 2
+    ctx.strokeStyle = INK
+    ctx.stroke()
+  }
+  if (b.phase === 'slam' && (b.mode === 'wind' || b.mode === 'drop')) {
+    // landing shadow warns where the slam will hit
+    ctx.globalAlpha = 0.25
+    ctx.fillStyle = INK
+    ctx.beginPath()
+    ctx.ellipse(b.x + b.w / 2, (g.H - 2) * T, b.w / 2, 8, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalAlpha = 1
+  }
+  if (b.phase === 'defeated' && b.y > g.H * T) return
+  drawBoss(ctx, b.x, b.y, {
+    w: b.w, h: b.h, t: g.time, flash: b.flash, dir: b.dir,
+    dazed: b.mode === 'dazed' || b.mode === 'stuck' || b.phase === 'defeated',
+    winding: b.mode === 'wind',
+    shielded: b.phase === 'shield',
+  })
+}
+
+function drawPointer(ctx: Ctx, g: Game): void {
+  if (!g.pointer) return
+  const cx = g.viewW / 2
+  const cy = g.viewH / 2
+  const dx = g.pointer.x - g.cam.x - cx
+  const dy = g.pointer.y - g.cam.y - cy
+  const a = Math.atan2(dy, dx)
+  const k = Math.min((cx - 40) / Math.abs(Math.cos(a) || 1e-3), (cy - 60) / Math.abs(Math.sin(a) || 1e-3))
+  const px = cx + Math.cos(a) * k
+  const py = cy + Math.sin(a) * k
+  ctx.save()
+  ctx.globalAlpha = Math.min(1, g.pointer.t * 2)
+  ctx.translate(px, py)
+  ctx.rotate(a)
+  const pulse = 1 + Math.sin(g.time * 10) * 0.12
+  ctx.scale(pulse, pulse)
+  ctx.beginPath()
+  ctx.moveTo(18, 0); ctx.lineTo(-10, -14); ctx.lineTo(-4, 0); ctx.lineTo(-10, 14)
+  ctx.closePath()
+  ctx.fillStyle = '#ff7fae'
+  ctx.fill()
+  ctx.lineWidth = 3
+  ctx.strokeStyle = INK
+  ctx.stroke()
   ctx.restore()
 }
 
-function drawEnemy(ctx: Ctx, e: Enemy): void {
-  const x = e.x + e.w / 2
-  const y = e.y + e.h
-  const sq = e.alive ? 0 : e.squash + 0.01
-  switch (e.kind) {
-    case 'walker': drawGrumble(ctx, x, y, e.dir, e.t, sq); break
-    case 'spiky': drawSpiky(ctx, x, y, e.dir, e.t, sq); break
-    case 'bee': drawBee(ctx, x, y, e.dir, e.t, sq); break
-    case 'frog': drawFrog(ctx, x, y, e.dir, e.t, sq, !e.grounded); break
-    case 'shooter': drawShooter(ctx, x, y, e.dir, e.t, sq, e.timer); break
-  }
-}
-
-const segmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl ? new Intl.Segmenter(undefined, { granularity: 'word' }) : null
-
-/** Splits text into lines that fit maxW. Uses Intl.Segmenter so Thai (no spaces) wraps on word boundaries. */
-function wrap(ctx: Ctx, text: string, maxW: number): string[] {
-  const words = segmenter ? Array.from(segmenter.segment(text), (s) => s.segment) : text.split(/(\s+)/)
-  const lines: string[] = []
-  let line = ''
-  for (const w of words) {
-    const test = line + w
-    if (ctx.measureText(test).width > maxW && line.trim()) {
-      lines.push(line.trim())
-      line = w.trimStart()
-    } else line = test
-  }
-  if (line.trim()) lines.push(line.trim())
-  return lines
-}
-
-function bubble(ctx: Ctx, x: number, y: number, text: string, a: number, g: { cam: { x: number }; viewW: number }): void {
+function drawIris(ctx: Ctx, g: Game): void {
+  if (g.iris <= 0) return
+  const p = g.player
+  const cx = p.x + p.w / 2 - g.cam.x
+  const cy = p.y + p.h / 2 - g.cam.y
+  const r = (1 - g.iris) * Math.hypot(g.viewW, g.viewH)
   ctx.save()
-  ctx.font = FONT(800, 15)
-  const lines = wrap(ctx, text, 230)
-  const lh = 20
-  const w = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 28
-  const h = lines.length * lh + 18
+  ctx.beginPath()
+  ctx.rect(0, 0, g.viewW, g.viewH)
+  ctx.arc(cx, cy, Math.max(0, r), 0, Math.PI * 2, true)
+  ctx.fillStyle = '#2d2140'
+  ctx.fill('evenodd')
+  ctx.restore()
+}
+
+function hintBubble(ctx: Ctx, x: number, y: number, tokens: Token[], a: number, g: Game): void {
+  ctx.save()
+  const mode = ui.inputMode
+  const gap = 8
+  const widths = tokens.map((tk) => tokenWidth(ctx, tk, mode))
+  const w = widths.reduce((s2, v) => s2 + v, 0) + gap * (tokens.length - 1) + 28
+  const h = 50
   const bx = Math.max(g.cam.x + 10, Math.min(g.cam.x + g.viewW - w - 10, x - w / 2))
   const by = y - h - 6 * (1 - a)
   ctx.globalAlpha = a
@@ -709,11 +794,82 @@ function bubble(ctx: Ctx, x: number, y: number, text: string, a: number, g: { ca
   ctx.moveTo(tx - 9, by + h - 1.5); ctx.lineTo(tx, by + h + 10); ctx.lineTo(tx + 9, by + h - 1.5)
   ctx.fill(); ctx.stroke()
   ctx.fillRect(tx - 7.5, by + h - 4, 15, 4)
-  ctx.fillStyle = INK
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  lines.forEach((l, i) => ctx.fillText(l, bx + w / 2, by + 9 + lh / 2 + i * lh))
+  let cx = bx + 14
+  tokens.forEach((tk, i) => {
+    drawToken(ctx, tk, cx + widths[i] / 2, by + h / 2, mode, g.time)
+    cx += widths[i] + gap
+  })
   ctx.restore()
 }
 
-export type { TextKey }
+function drawHomeScene(ctx: Ctx, g: Game): void {
+  const pal = g.levels[0].palette
+  const saved = { x: g.cam.x, y: g.cam.y }
+  g.cam.x = g.time * 12
+  g.cam.y = 0
+  drawSky(ctx, g, pal)
+  g.cam.x = saved.x
+  g.cam.y = saved.y
+  const W = g.viewW
+  const groundY = g.viewH * 0.62
+  ctx.fillStyle = pal.soil
+  ctx.fillRect(0, groundY, W, g.viewH - groundY)
+  ctx.fillStyle = pal.grass
+  ctx.fillRect(0, groundY - 4, W, 16)
+  for (let x = 0; x < W; x += 10) { ctx.beginPath(); ctx.arc(x + 5, groundY + 12, 5.5, 0, Math.PI); ctx.fill() }
+  ctx.fillStyle = pal.grassLight
+  ctx.fillRect(0, groundY - 2, W, 4)
+
+  // the house
+  const hx = W / 2 - 90
+  ctx.fillStyle = '#fff3e6'
+  rr(ctx, hx, groundY - 120, 180, 120, [6, 6, 0, 0]); ctx.fill()
+  ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.stroke()
+  ctx.fillStyle = '#ff8fb8'
+  ctx.beginPath()
+  ctx.moveTo(hx - 20, groundY - 112); ctx.lineTo(hx + 90, groundY - 190); ctx.lineTo(hx + 200, groundY - 112)
+  ctx.closePath(); ctx.fill(); ctx.stroke()
+  ctx.fillStyle = '#c98b5e'
+  rr(ctx, hx + 70, groundY - 70, 40, 70, [20, 20, 0, 0]); ctx.fill(); ctx.stroke()
+  for (const wx of [hx + 22, hx + 128]) {
+    ctx.fillStyle = '#bfe6ff'
+    rr(ctx, wx, groundY - 92, 32, 30, 6); ctx.fill(); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(wx + 16, groundY - 92); ctx.lineTo(wx + 16, groundY - 62); ctx.stroke()
+  }
+  drawHeart(ctx, hx + 90, groundY - 140, 16, '#ff5fa8')
+
+  const d = saveState.data
+  const hop = (i: number): number => (ui.screen === 'end' ? Math.abs(Math.sin(g.time * 3 + i)) * 14 : 0)
+  if (d?.cleared[2]) drawCat(ctx, hx - 40, groundY, 'billion', { facing: 1, t: g.time, moving: false, scale: 1.2, hop: hop(0) })
+  if (d?.cleared[5]) drawCat(ctx, hx + 225, groundY, 'million', { facing: -1, t: g.time + 1, moving: false, scale: 1.2, hop: hop(1) })
+  drawRosie(ctx, hx - 100, groundY - hop(2), {
+    facing: 1, sx: 1.3, sy: 1.3, runT: 0, grounded: true, vy: 0, canDash: true, alpha: 1, blink: g.time % 3 < 0.12, costume: costumeOf(d),
+  })
+  // found kittens play on the lawn
+  let n = 0
+  d?.kittens.forEach((world, wi) => world.forEach((found, ki) => {
+    if (!found) return
+    const side = n % 2 ? 1 : -1
+    const slot = Math.floor(n / 2)
+    const kx = W / 2 + side * (150 + slot * 34) + (side > 0 ? 60 : -60)
+    drawKitten(ctx, kx, groundY + 2, ki + wi, g.time + n, 0.9)
+    n++
+  }))
+  if (ui.screen === 'end' && Math.random() < 0.3) g.spawn(Math.random() * W, -10, 0, 60, 6, 6, ['#ff8fc0', '#ffd84a', '#7cc4ff'][Math.floor(Math.random() * 3)], 'heart', 20)
+  drawParticles(ctx, g)
+}
+
+function drawEnemy(ctx: Ctx, e: Enemy): void {
+  const x = e.x + e.w / 2
+  const y = e.y + e.h
+  const sq = e.alive ? 0 : e.squash + 0.01
+  switch (e.kind) {
+    case 'walker': drawGrumble(ctx, x, y, e.dir, e.t, sq); break
+    case 'spiky': drawSpiky(ctx, x, y, e.dir, e.t, sq); break
+    case 'bee': drawBee(ctx, x, y, e.dir, e.t, sq, e.state === 1); break
+    case 'frog': drawFrog(ctx, x, y, e.dir, e.t, sq, !e.grounded, e.state === 1); break
+    case 'shooter': drawShooter(ctx, x, y, e.dir, e.t, sq, e.timer); break
+  }
+}
+
+

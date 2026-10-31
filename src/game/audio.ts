@@ -1,6 +1,6 @@
 export type Sfx =
   | 'jump' | 'fish' | 'stomp' | 'dash' | 'hurt' | 'switch' | 'bounce'
-  | 'yarn' | 'miss' | 'key' | 'crack' | 'bell' | 'rescue' | 'clear' | 'locked' | 'land' | 'tick' | 'ready'
+  | 'yarn' | 'miss' | 'key' | 'crack' | 'bell' | 'rescue' | 'clear' | 'locked' | 'land' | 'tick' | 'ready' | 'mew' | 'kitten' | 'hover' | 'buzz' | 'roar' | 'slam' | 'bosshit'
 
 // Each level gets its own little tune: semitone offsets from the root, null = rest.
 const SONGS: { root: number; tempo: number; melody: (number | null)[]; bass: number[] }[] = [
@@ -84,7 +84,7 @@ class Audio {
     src.start()
   }
 
-  play(s: Sfx): void {
+  play(s: Sfx, vol = 1): void {
     if (!this.ac) return
     switch (s) {
       case 'jump': this.tone(420, 760, 0.13, 'triangle', 0.12); break
@@ -96,6 +96,13 @@ class Audio {
       case 'switch': this.tone(660, 1320, 0.09, 'sine', 0.12); this.tone(990, 1980, 0.12, 'sine', 0.08, 0.07); break
       case 'bounce': this.tone(180, 820, 0.22, 'sine', 0.16); break
       case 'yarn': this.tone(600, 1100, 0.07, 'triangle', 0.1); this.noise(0.05, 0.04, 3000); break
+      case 'mew': this.tone(900, 1300, 0.12, 'sine', 0.05 * vol); this.tone(1300, 800, 0.18, 'sine', 0.04 * vol, 0.1); break
+      case 'kitten': [0, 7, 12, 16, 19].forEach((n, i) => this.tone(659 * 2 ** (n / 12), 659 * 2 ** (n / 12), 0.15, 'triangle', 0.08, i * 0.07)); this.play('mew'); break
+      case 'hover': this.tone(700, 1100, 0.18, 'sine', 0.05); break
+      case 'buzz': this.tone(180, 220, 0.3, 'sawtooth', 0.04); break
+      case 'roar': this.tone(140, 70, 0.6, 'sawtooth', 0.09); this.noise(0.5, 0.1, 300); break
+      case 'slam': this.noise(0.35, 0.25, 180); this.tone(90, 40, 0.3, 'square', 0.1); break
+      case 'bosshit': this.tone(400, 1200, 0.15, 'square', 0.08); this.noise(0.15, 0.12, 1500); break
       case 'tick': this.tone(1800, 1700, 0.04, 'square', 0.04); break
       case 'ready': this.tone(1200, 1600, 0.06, 'sine', 0.05); break
       case 'miss': this.tone(300, 220, 0.08, 'triangle', 0.06); break

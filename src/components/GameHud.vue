@@ -22,11 +22,18 @@ defineEmits<{ pause: []; mute: [] }>()
         </svg>
         <span class="num">{{ ui.levelCandy }}/{{ ui.levelCandyTotal }}</span>
       </div>
+      <div class="chip kits" :aria-label="t('kittens')">
+        <i v-for="(f, k) in ui.levelKittens" :key="k" :class="{ on: f }" />
+      </div>
       <div v-if="ui.levelNeedsKey" class="chip key" :class="{ got: ui.hasKey }">
         <svg viewBox="0 0 30 16"><circle cx="7" cy="8" r="5.5" /><rect x="11" y="6" width="16" height="4" rx="1.5" /><rect x="22" y="9" width="3.5" height="5" rx="1" /></svg>
       </div>
     </div>
-    <div class="level">{{ t(`l${ui.levelIndex + 1}` as 'l1') }}</div>
+    <div v-if="ui.bossHp > 0" class="boss" role="meter" :aria-valuenow="ui.bossHp" aria-valuemin="0" aria-valuemax="6">
+      <span>{{ t('l7s') }}</span>
+      <div class="bar"><div class="fill" :style="{ width: `${(ui.bossHp / 6) * 100}%` }" /></div>
+    </div>
+    <div v-else class="level">{{ t(`l${ui.levelIndex + 1}` as 'l1') }}</div>
     <div class="group">
       <div class="chip cats">
         <span :class="{ on: ui.rescued.includes('billion') }">{{ t('billion') }}</span>
@@ -100,5 +107,11 @@ defineEmits<{ pause: []; mute: [] }>()
 @media (max-width: 640px) {
   .cats { display: none; }
 }
+.kits { gap: 5px; }
+.kits i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); background: #e6dde3; }
+.kits i.on { background: #ffb46b; animation: wiggle 0.6s; }
+.boss { display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 900; color: var(--paper); text-shadow: 0 2px 0 var(--ink), 0 -2px 0 var(--ink), 2px 0 0 var(--ink), -2px 0 0 var(--ink); }
+.bar { width: min(260px, 30vw); height: 16px; border-radius: 8px; border: 3px solid var(--ink); background: var(--paper); overflow: hidden; }
+.fill { height: 100%; background: linear-gradient(90deg, #b48cff, #ff7fae); transition: width 0.3s; }
 @keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-8deg) scale(1.15); } 75% { transform: rotate(8deg) scale(1.15); } }
 </style>

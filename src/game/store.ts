@@ -1,7 +1,8 @@
 import { reactive } from 'vue'
 
 export type CatName = 'billion' | 'million'
-export type Screen = 'title' | 'play' | 'paused' | 'clear' | 'over' | 'end'
+export type Screen = 'title' | 'slots' | 'hub' | 'play' | 'paused' | 'clear' | 'end'
+export type InputMode = 'touch' | 'keyboard' | 'pad'
 
 export const ui = reactive({
   screen: 'title' as Screen,
@@ -17,7 +18,10 @@ export const ui = reactive({
   rescued: [] as CatName[],
   justRescued: null as CatName | null,
   muted: false,
-  savedLevel: 0,
+  levelKittens: [] as boolean[],
+  bossHp: 0,
+  hubFocus: 0,
+  inputMode: 'keyboard' as InputMode,
   gamepad: false,
   dashReady: true,
   uiScale: loadUiScale(),
@@ -41,20 +45,3 @@ export function saveUiScale(v: number): void {
   }
 }
 
-const SAVE_KEY = 'billion-million-progress'
-
-export function loadProgress(): number {
-  try {
-    return Number(localStorage.getItem(SAVE_KEY) ?? 0) || 0
-  } catch {
-    return 0
-  }
-}
-
-export function saveProgress(level: number): void {
-  try {
-    localStorage.setItem(SAVE_KEY, String(level))
-  } catch {
-    // storage blocked — progress just won't persist
-  }
-}

@@ -1,37 +1,98 @@
 <script setup lang="ts">
-import { computed, markRaw, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Game } from './game/engine'
 import { audio } from './game/audio'
 import { saveUiScale, ui } from './game/store'
 import { haptics, buzz } from './game/haptics'
+import { persist, saveState } from './game/save'
 import { i18n, setLocale, t, type Locale, type TextKey } from './game/i18n'
 import GameHud from './components/GameHud.vue'
 import TouchControls from './components/TouchControls.vue'
+import SlotSelect from './components/SlotSelect.vue'
+import HubScreen from './components/HubScreen.vue'
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 const game = markRaw(new Game())
 if (import.meta.env.DEV) (window as unknown as { game: Game }).game = game
 const isTouch = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || location.search.includes('touch')
+if (isTouch) ui.inputMode = 'touch'
 const portrait = ref(false)
 const hapticsOn = ref(haptics.enabled)
 
-const playing = computed(() => ['play', 'paused', 'clear', 'over'].includes(ui.screen))
+const playing = computed(() => ['play', 'paused', 'clear'].includes(ui.screen))
 const levelName = computed(() => t(`l${ui.levelIndex + 1}` as TextKey))
 const levelSub = computed(() => t(`l${ui.levelIndex + 1}s` as TextKey))
 const clearTitle = computed(() => {
+  if (ui.levelIndex === game.levels.length - 1) return t('bossDown')
   if (ui.justRescued === 'billion') return t('savedBillion')
   if (ui.justRescued === 'million') return t('savedMillion')
   return t('worldClear')
 })
 
-function start(level: number): void {
+// ── install as an app (PWA) ──
+interface InstallEvent extends Event { prompt: () => Promise<void> }
+const installEvt = ref<InstallEvent | null>(null)
+const standalone = window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches || (navigator as { standalone?: boolean }).standalone === true
+const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+const iosHelp = ref(false)
+const canInstall = computed(() => !standalone && (installEvt.value !== null || isIos))
+
+async function install(): Promise<void> {
   buzz('tap')
-  game.newGame(level)
+  if (installEvt.value) {
+    await installEvt.value.prompt().catch(() => undefined)
+    installEvt.value = null
+  } else iosHelp.value = true
+}
+
+function onInstallPrompt(e: Event): void {
+  e.preventDefault()
+  installEvt.value = e as InstallEvent
+}
+
+// ── keep the screen awake while playing ──
+let wake: { release: () => Promise<void> } | null = null
+async function syncWakeLock(): Promise<void> {
+  const want = ui.screen === 'play' && !document.hidden
+  try {
+    if (want && !wake && 'wakeLock' in navigator) {
+      wake = await (navigator as unknown as { wakeLock: { request: (t: string) => Promise<{ release: () => Promise<void> }> } }).wakeLock.request('screen')
+    } else if (!want && wake) {
+      await wake.release()
+      wake = null
+    }
+  } catch {
+    wake = null
+  }
+}
+watch(() => ui.screen, syncWakeLock)
+
+function openSlots(): void {
+  buzz('tap')
+  audio.unlock()
+  ui.screen = 'slots'
+}
+
+function slotOpened(): void {
+  const d = saveState.data!
+  ui.hubFocus = d.resume?.world ?? Math.min(d.unlocked, game.levels.length - 1)
+  game.toHub()
+}
+
+function playWorld(world: number, resume: boolean): void {
+  game.startWorld(world, resume)
 }
 
 function toTitle(): void {
+  persist()
   ui.screen = 'title'
   audio.stopSong()
+}
+
+function toHome(): void {
+  persist()
+  ui.hubFocus = ui.levelIndex
+  game.toHub()
 }
 
 function pickLocale(l: Locale): void {
@@ -57,7 +118,15 @@ function checkOrientation(): void {
 }
 
 function onVisibility(): void {
-  if (document.hidden && ui.screen === 'play') game.togglePause()
+  if (document.hidden) {
+    persist()
+    if (ui.screen === 'play') game.togglePause()
+  }
+  void syncWakeLock()
+}
+
+function onFirstTouch(): void {
+  if (ui.inputMode !== 'pad') ui.inputMode = 'touch'
 }
 
 const block = (e: Event): void => e.preventDefault()
@@ -69,6 +138,9 @@ onMounted(() => {
   document.fonts?.load('700 15px Mali', 'กขค').catch(() => undefined)
   checkOrientation()
   window.addEventListener('resize', checkOrientation)
+  window.addEventListener('beforeinstallprompt', onInstallPrompt)
+  window.addEventListener('pagehide', persist)
+  window.addEventListener('touchstart', onFirstTouch, { passive: true })
   document.addEventListener('visibilitychange', onVisibility)
   document.addEventListener('gesturestart', block)
   document.addEventListener('dblclick', block)
@@ -77,6 +149,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   game.unmount()
   window.removeEventListener('resize', checkOrientation)
+  window.removeEventListener('beforeinstallprompt', onInstallPrompt)
+  window.removeEventListener('pagehide', persist)
+  window.removeEventListener('touchstart', onFirstTouch)
   document.removeEventListener('visibilitychange', onVisibility)
   document.removeEventListener('gesturestart', block)
   document.removeEventListener('dblclick', block)
@@ -105,8 +180,8 @@ onBeforeUnmount(() => {
       <h1><span class="b">Billion</span> <span class="amp">&amp;</span> <span class="m">Million</span></h1>
       <p class="lead">{{ t('lead') }}</p>
       <div class="menu">
-        <button v-if="ui.savedLevel > 0" class="cta" @click="start(ui.savedLevel)">{{ t('continue', { n: ui.savedLevel + 1 }) }}</button>
-        <button :class="ui.savedLevel > 0 ? 'ghost' : 'cta'" @click="start(0)">{{ ui.savedLevel > 0 ? t('newGame') : t('play') }}</button>
+        <button class="cta" @click="openSlots">{{ t('play') }}</button>
+        <button v-if="canInstall" class="ghost" @click="install">{{ t('install') }}</button>
       </div>
       <dl v-if="ui.gamepad" class="keys">
         <div><dt>✕</dt><dd>{{ t('jump') }}</dd></div>
@@ -121,7 +196,15 @@ onBeforeUnmount(() => {
         <div><dt>C</dt><dd>{{ t('yarn') }}</dd></div>
         <div><dt>Esc</dt><dd>{{ t('pause') }}</dd></div>
       </dl>
+      <div v-if="iosHelp" class="ios-help" role="dialog">
+        <p>{{ t('installIos') }}</p>
+        <button class="ghost small" @click="iosHelp = false">{{ t('gotIt') }}</button>
+      </div>
     </section>
+
+    <SlotSelect v-if="ui.screen === 'slots'" :worlds="game.levels.length" @opened="slotOpened" @back="ui.screen = 'title'" />
+
+    <HubScreen v-if="ui.screen === 'hub' && saveState.data" :levels="game.levels" @play="playWorld" @title="toTitle" />
 
     <section v-if="ui.screen === 'paused'" class="screen dim">
       <div class="card">
@@ -140,15 +223,7 @@ onBeforeUnmount(() => {
             <button v-for="[label, v] in SIZES" :key="label" class="pill" :class="{ on: ui.uiScale === v }" @click="pickSize(v)">{{ label }}</button>
           </div>
         </div>
-        <button class="ghost" @click="toTitle">{{ t('menu') }}</button>
-      </div>
-    </section>
-
-    <section v-if="ui.screen === 'over'" class="screen dim">
-      <div class="card">
-        <h2>{{ t('ohNo') }}</h2>
-        <p>{{ t('outOfHearts') }}</p>
-        <button class="cta" @click="game.restartLevel()">{{ t('tryAgain') }}</button>
+        <button class="ghost" @click="toHome">{{ t('toHome') }}</button>
       </div>
     </section>
 
@@ -164,9 +239,8 @@ onBeforeUnmount(() => {
     <section v-if="ui.screen === 'end'" class="screen title end">
       <h1>{{ t('hooray') }}</h1>
       <p class="lead">{{ t('endText') }}</p>
-      <p class="stat">{{ t('totalSweets') }}: <b>{{ ui.candy }}</b></p>
       <div class="menu">
-        <button class="cta" @click="start(0)">{{ t('playAgain') }}</button>
+        <button class="cta" @click="toHome">{{ t('playAgain') }}</button>
       </div>
     </section>
 
@@ -380,4 +454,20 @@ h1 .amp { color: var(--gold); }
   .card { padding: 16px 20px 20px; gap: 8px; }
   .card h2 { font-size: 26px; }
 }
+.ios-help {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  max-width: 360px;
+  padding: 14px 18px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  font-weight: 800;
+}
+.ios-help p { margin: 0; }
+.small { font-size: 16px; padding: 8px 20px; }
+.end .stat { display: none; }
 </style>

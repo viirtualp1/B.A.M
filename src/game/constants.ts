@@ -31,6 +31,8 @@ export const PHYS = {
   gemRespawn: 2.5,
   dashCooldown: 0.45,
   timedSwitch: 3.5,
+  hoverTime: 0.55,
+  hoverFall: 35,
 }
 
 export const MAX_HEARTS = 3

@@ -65,3 +65,14 @@ export function buzz(kind: Buzz): void {
     // haptics are a nicety
   }
 }
+
+const STEP_RUMBLE = { ground: [0.12, 0.05], wood: [0.05, 0.14], soft: [0, 0.04] } as const
+
+/** Controller-only footstep rumble, different per surface. Phones stay quiet for footsteps. */
+export function stepRumble(surface: keyof typeof STEP_RUMBLE): void {
+  if (!haptics.enabled || haptics.padIndex < 0 || typeof navigator === 'undefined') return
+  const gp = navigator.getGamepads?.()[haptics.padIndex]
+  const act = (gp as (Gamepad & { vibrationActuator?: GamepadHapticActuator | null }) | null)?.vibrationActuator
+  const [strongMagnitude, weakMagnitude] = STEP_RUMBLE[surface]
+  act?.playEffect?.('dual-rumble', { duration: 35, strongMagnitude, weakMagnitude }).catch(() => undefined)
+}

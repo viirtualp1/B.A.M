@@ -1,4 +1,5 @@
 import { haptics } from './haptics'
+import { ui } from './store'
 
 export type Action = 'left' | 'right' | 'up' | 'down' | 'jump' | 'dash' | 'yarn' | 'pause' | 'mute' | 'confirm'
 
@@ -39,6 +40,7 @@ export class Input {
     e.preventDefault()
     if (e.repeat) return
     haptics.padIndex = -1
+    ui.inputMode = 'keyboard'
     actions.forEach((a) => this.press(a))
   }
   private onKeyUp = (e: KeyboardEvent): void => {
@@ -87,7 +89,10 @@ export class Input {
       if (b(PAD.square) || b(PAD.r1) || b(PAD.r2)) want.add('dash')
       if (b(PAD.circle) || b(PAD.l1) || b(PAD.l2)) want.add('yarn')
       if (b(PAD.options)) want.add('pause')
-      if (want.size > before && [...want].some((a) => !this.padHeld.has(a))) haptics.padIndex = gp.index
+      if (want.size > before && [...want].some((a) => !this.padHeld.has(a))) {
+        haptics.padIndex = gp.index
+        ui.inputMode = 'pad'
+      }
     }
     for (const a of this.padHeld) if (!want.has(a)) this.release(a)
     for (const a of want) if (!this.padHeld.has(a)) this.press(a)

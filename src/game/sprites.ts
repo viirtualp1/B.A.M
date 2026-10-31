@@ -1,4 +1,5 @@
 import type { CatName } from './store'
+import type { Costume } from './save'
 
 type Ctx = CanvasRenderingContext2D
 
@@ -26,6 +27,8 @@ export interface HeroPose {
   canDash: boolean
   alpha: number
   blink: boolean
+  costume?: Costume
+  hover?: boolean
 }
 
 /** Rosie — a tiny pink superhero girl with a giant head and huge eyes. Origin at bottom-center. */
@@ -38,8 +41,9 @@ export function drawRosie(ctx: Ctx, x: number, y: number, p: HeroPose): void {
   const hair = '#ff5fa8'
   const hairDark = '#e8438f'
   const skin = '#ffe6da'
-  const dress = '#ff8cc6'
-  const bow = p.canDash ? '#ff2f7a' : '#c9b6c4'
+  const dress = p.costume?.dress ?? '#ff8cc6'
+  const accessory = p.costume?.accessory ?? 'bow'
+  const bow = p.canDash ? p.costume?.bow ?? '#ff2f7a' : '#c9b6c4'
   const flow = Math.max(-1, Math.min(1, p.vy * 0.0015))
 
   // long hair behind the head, swishing with movement
@@ -82,7 +86,7 @@ export function drawRosie(ctx: Ctx, x: number, y: number, p: HeroPose): void {
   ctx.fillRect(-7, -12.5, 14, 2.5)
 
   // stubby arms
-  const arm = p.grounded ? Math.sin(p.runT * 6 + 1) * 2 : -4
+  const arm = p.hover ? -9 + Math.sin(p.runT + Date.now() / 60) : p.grounded ? Math.sin(p.runT * 6 + 1) * 2 : -4
   ellipse(ctx, f * 9, -15 + arm, 3.2, 3.2, skin, true, 1.8)
   ellipse(ctx, -f * 8, -15 - arm, 3.2, 3.2, skin, true, 1.8)
 
@@ -101,18 +105,49 @@ export function drawRosie(ctx: Ctx, x: number, y: number, p: HeroPose): void {
   ctx.lineWidth = 2.2
   ctx.stroke()
 
-  // big bow
+  // headwear: bow (default), star clip, tuxedo cat ears or a crown; it greys out while dash recharges
   ctx.save()
   ctx.translate(-f * 3, -45)
   ctx.rotate(-f * 0.15 + flow * 0.2)
-  ctx.fillStyle = bow
   ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.moveTo(0, 0); ctx.quadraticCurveTo(-12, -11, -15, 1); ctx.quadraticCurveTo(-9, 5, 0, 0)
-  ctx.moveTo(0, 0); ctx.quadraticCurveTo(12, -11, 15, 1); ctx.quadraticCurveTo(9, 5, 0, 0)
-  ctx.fill()
-  ctx.stroke()
-  ellipse(ctx, 0, 0, 3.4, 3.4, bow, true, 2)
+  ctx.strokeStyle = INK
+  if (accessory === 'star') {
+    drawStar(ctx, 0, 0, 10, 0.2, bow)
+    ctx.beginPath()
+    for (let i = 0; i < 8; i++) {
+      const rr = i % 2 ? 4 : 10
+      const a = (i / 8) * Math.PI * 2 + 0.2
+      ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr)
+    }
+    ctx.closePath()
+    ctx.stroke()
+  } else if (accessory === 'crown') {
+    ctx.beginPath()
+    ctx.moveTo(-10, 4); ctx.lineTo(-11, -8); ctx.lineTo(-5, -2); ctx.lineTo(0, -11); ctx.lineTo(5, -2); ctx.lineTo(11, -8); ctx.lineTo(10, 4)
+    ctx.closePath()
+    ctx.fillStyle = p.canDash ? '#ffcf3a' : '#d8d0c0'
+    ctx.fill()
+    ctx.stroke()
+    ellipse(ctx, 0, -1, 2.2, 2.2, bow, false)
+  } else {
+    if (accessory === 'ears') {
+      for (const ex of [-9, 9]) {
+        ctx.beginPath()
+        ctx.moveTo(ex - 5, 6); ctx.lineTo(ex * 1.25, -10); ctx.lineTo(ex + 5, 6)
+        ctx.closePath()
+        ctx.fillStyle = '#2a2531'
+        ctx.fill()
+        ctx.stroke()
+      }
+    }
+    ctx.fillStyle = bow
+    ctx.beginPath()
+    ctx.moveTo(0, 0); ctx.quadraticCurveTo(-12, -11, -15, 1); ctx.quadraticCurveTo(-9, 5, 0, 0)
+    ctx.moveTo(0, 0); ctx.quadraticCurveTo(12, -11, 15, 1); ctx.quadraticCurveTo(9, 5, 0, 0)
+    ctx.fill()
+    ctx.stroke()
+    ellipse(ctx, 0, 0, 3.4, 3.4, bow, true, 2)
+  }
   ctx.restore()
 
   // huge eyes
@@ -401,9 +436,9 @@ export function drawSpiky(ctx: Ctx, x: number, y: number, dir: number, t: number
 }
 
 /** Buzzy — a round bumblebee. */
-export function drawBee(ctx: Ctx, x: number, y: number, dir: number, t: number, squash: number): void {
+export function drawBee(ctx: Ctx, x: number, y: number, dir: number, t: number, squash: number, angry = false): void {
   ctx.save()
-  ctx.translate(x, y - 13)
+  ctx.translate(x + (angry ? Math.sin(t * 70) * 2 : 0), y - 13)
   ctx.scale(dir, squash > 0 ? Math.max(0.25, 1 - squash * 3) : 1)
   const flap = Math.sin(t * 40) * 0.5
   ctx.globalAlpha = 0.8
@@ -415,7 +450,7 @@ export function drawBee(ctx: Ctx, x: number, y: number, dir: number, t: number, 
     ctx.restore()
   }
   ctx.globalAlpha = 1
-  ellipse(ctx, 0, 0, 13, 11, '#ffd84a', true, 2.5)
+  ellipse(ctx, 0, 0, 13, 11, angry ? '#ffb04a' : '#ffd84a', true, 2.5)
   ctx.save()
   ctx.beginPath()
   ctx.ellipse(0, 0, 12, 10, 0, 0, Math.PI * 2)
@@ -435,11 +470,11 @@ export function drawBee(ctx: Ctx, x: number, y: number, dir: number, t: number, 
 }
 
 /** Hopper — a squishy frog that leaps toward Rosie. */
-export function drawFrog(ctx: Ctx, x: number, y: number, dir: number, t: number, squash: number, airborne: boolean): void {
+export function drawFrog(ctx: Ctx, x: number, y: number, dir: number, t: number, squash: number, airborne: boolean, crouch = false): void {
   ctx.save()
   ctx.translate(x, y)
-  const sq = squash > 0 ? Math.max(0.25, 1 - squash * 3) : airborne ? 1.15 : 1 + Math.sin(t * 5) * 0.04
-  ctx.scale(dir * (squash > 0 ? 1.3 : 1), sq)
+  const sq = squash > 0 ? Math.max(0.25, 1 - squash * 3) : airborne ? 1.15 : crouch ? 0.72 + Math.sin(t * 40) * 0.03 : 1 + Math.sin(t * 5) * 0.04
+  ctx.scale(dir * (squash > 0 || crouch ? 1.25 : 1), sq)
   ellipse(ctx, -9, -3, 6, 3.5, '#5fc46a')
   ellipse(ctx, 9, -3, 6, 3.5, '#5fc46a')
   ellipse(ctx, 0, -11, 15, 11, '#7ddc7a', true, 2.5)
@@ -476,13 +511,19 @@ export function drawShooter(ctx: Ctx, x: number, y: number, dir: number, t: numb
   ctx.moveTo(0, -12)
   ctx.quadraticCurveTo(-3, -18, 0, -24)
   ctx.stroke()
-  const puff = 1 + Math.max(0, Math.min(0.4, 0.4 - charge)) * 0.5
+  const wind = charge < 0.5 ? (0.5 - Math.max(0, charge)) * 2 : 0
+  const puff = 1 + wind * 0.35
   ctx.save()
   ctx.translate(0, -28)
   ctx.rotate(Math.sin(t * 2) * 0.1)
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2 + t * 0.5
     ellipse(ctx, Math.cos(a) * 9 * puff, Math.sin(a) * 9 * puff, 5.5, 5.5, '#ff9ccf', true, 1.8)
+  }
+  if (wind > 0) {
+    ctx.globalAlpha = wind * 0.6
+    ellipse(ctx, 0, 0, 16 * puff, 16 * puff, '#ffffff', false)
+    ctx.globalAlpha = 1
   }
   ellipse(ctx, 0, 0, 8, 8, '#ffe066', true, 2)
   ellipse(ctx, 4, 0, 3.5 * puff, 3 * puff, INK, false)
@@ -589,5 +630,155 @@ export function drawStar(ctx: Ctx, x: number, y: number, r: number, rot: number,
   ctx.closePath()
   ctx.fillStyle = color
   ctx.fill()
+  ctx.restore()
+}
+
+const KITTEN_COLORS = [
+  { body: '#ffb46b', patch: '#ffffff', ear: '#ff9fbf' },
+  { body: '#b3adc4', patch: '#ffffff', ear: '#ff9fbf' },
+  { body: '#ffffff', patch: '#ff9f55', ear: '#ff9fbf' },
+]
+
+/** A small hidden kitten (orange, grey or calico). Origin at bottom-center. */
+export function drawKitten(ctx: Ctx, x: number, y: number, idx: number, t: number, scale = 1): void {
+  const c = KITTEN_COLORS[idx % 3]
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.scale(scale, scale)
+  const bob = Math.abs(Math.sin(t * 2.2)) * 1.5
+  ctx.strokeStyle = INK
+  ctx.lineCap = 'round'
+  ctx.lineWidth = 6
+  ctx.beginPath()
+  ctx.moveTo(-8, -6)
+  ctx.quadraticCurveTo(-18, -8, -15, -20 + Math.sin(t * 3) * 3)
+  ctx.stroke()
+  ctx.strokeStyle = c.body
+  ctx.lineWidth = 3.5
+  ctx.stroke()
+  ellipse(ctx, 0, -8 - bob * 0.3, 10, 8, c.body, true, 2.2)
+  if (idx % 3 === 2) {
+    ellipse(ctx, -4, -10, 4, 3, c.patch, false)
+    ellipse(ctx, 4, -6, 3, 2.5, '#3a3342', false)
+  } else ellipse(ctx, 3, -6, 4, 4.5, c.patch, false)
+  ctx.save()
+  ctx.translate(2, -20 - bob)
+  const twitch = Math.sin(t * 1.7) > 0.95 ? -0.3 : 0
+  for (const ex of [-5, 5]) {
+    ctx.save()
+    ctx.rotate(ex > 0 ? twitch : 0)
+    ctx.beginPath()
+    ctx.moveTo(ex - 4, -4); ctx.lineTo(ex * 1.2, -13); ctx.lineTo(ex + 4, -4)
+    ctx.closePath()
+    ctx.fillStyle = c.body
+    ctx.fill()
+    ctx.lineWidth = 2
+    ctx.strokeStyle = INK
+    ctx.stroke()
+    ctx.restore()
+  }
+  ellipse(ctx, 0, 0, 9, 8, c.body, true, 2.2)
+  if (idx % 3 === 2) ellipse(ctx, -3, -3, 3.5, 3, c.patch === '#ff9f55' ? '#ff9f55' : c.patch, false)
+  ellipse(ctx, -3.5, -0.5, 1.8, 2.3, INK, false)
+  ellipse(ctx, 3.5, -0.5, 1.8, 2.3, INK, false)
+  ellipse(ctx, -3, -1.3, 0.7, 0.7, '#ffffff', false)
+  ellipse(ctx, 4, -1.3, 0.7, 0.7, '#ffffff', false)
+  ctx.fillStyle = '#ff8fb0'
+  ctx.beginPath(); ctx.moveTo(-1.3, 2.2); ctx.lineTo(1.3, 2.2); ctx.lineTo(0, 3.6); ctx.closePath(); ctx.fill()
+  ctx.restore()
+  ctx.restore()
+}
+
+export interface BossPose {
+  w: number
+  h: number
+  t: number
+  flash: number
+  dazed: boolean
+  winding: boolean
+  shielded: boolean
+  dir: number
+}
+
+/** The Grumble King: a huge storm puff with a lopsided crown. Origin top-left of its box. */
+export function drawBoss(ctx: Ctx, x: number, y: number, b: BossPose): void {
+  ctx.save()
+  const shake = b.winding ? Math.sin(b.t * 80) * 3 : 0
+  ctx.translate(x + b.w / 2 + shake, y + b.h)
+  const sx = b.w / 150
+  const sy = b.h / 110
+  ctx.scale(sx, sy)
+  if (b.shielded) {
+    ctx.globalAlpha = 0.25 + Math.sin(b.t * 4) * 0.08
+    ellipse(ctx, 0, -55, 100, 78, '#ffd1e4', false)
+    ctx.globalAlpha = 1
+  }
+  const body = b.flash > 0 ? '#ffffff' : b.winding ? '#c6a0d8' : '#9aa1d6'
+  ctx.beginPath()
+  ctx.arc(-45, -38, 34, 0, Math.PI * 2)
+  ctx.arc(0, -62, 44, 0, Math.PI * 2)
+  ctx.arc(45, -38, 34, 0, Math.PI * 2)
+  ctx.arc(-20, -22, 30, 0, Math.PI * 2)
+  ctx.arc(22, -22, 30, 0, Math.PI * 2)
+  ctx.fillStyle = body
+  ctx.fill()
+  ctx.lineWidth = 4
+  ctx.strokeStyle = INK
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(-45, -38, 31, 0, Math.PI * 2)
+  ctx.arc(0, -62, 41, 0, Math.PI * 2)
+  ctx.arc(45, -38, 31, 0, Math.PI * 2)
+  ctx.arc(-20, -22, 27, 0, Math.PI * 2)
+  ctx.arc(22, -22, 27, 0, Math.PI * 2)
+  ctx.fillStyle = body
+  ctx.fill()
+  ellipse(ctx, -12, -84, 18, 7, 'rgba(255,255,255,0.5)', false)
+  // crown
+  ctx.save()
+  ctx.translate(8, -102)
+  ctx.rotate(0.18)
+  ctx.beginPath()
+  ctx.moveTo(-24, 10); ctx.lineTo(-26, -14); ctx.lineTo(-12, -2); ctx.lineTo(0, -20); ctx.lineTo(12, -2); ctx.lineTo(26, -14); ctx.lineTo(24, 10)
+  ctx.closePath()
+  ctx.fillStyle = '#ffcf3a'
+  ctx.fill()
+  ctx.lineWidth = 3
+  ctx.stroke()
+  ellipse(ctx, 0, 0, 4, 4, '#ff5fa8', true, 2)
+  ctx.restore()
+  // face
+  const ex = b.dir * 6
+  if (b.dazed) {
+    ctx.strokeStyle = INK
+    ctx.lineWidth = 3
+    for (const cx of [ex - 18, ex + 18]) {
+      ctx.beginPath()
+      for (let a = 0; a < Math.PI * 4; a += 0.3) ctx.lineTo(cx + Math.cos(a + b.t * 8) * a * 0.9, -56 + Math.sin(a + b.t * 8) * a * 0.9)
+      ctx.stroke()
+    }
+    for (let i = 0; i < 3; i++) {
+      const a = b.t * 3 + (i * Math.PI * 2) / 3
+      drawStar(ctx, Math.cos(a) * 50, -110 + Math.sin(a) * 10, 7, a, '#ffd84a')
+    }
+  } else {
+    ellipse(ctx, ex - 18, -54, 7, 9, INK, false)
+    ellipse(ctx, ex + 18, -54, 7, 9, INK, false)
+    ellipse(ctx, ex - 16, -57, 2.5, 2.5, '#ffffff', false)
+    ellipse(ctx, ex + 20, -57, 2.5, 2.5, '#ffffff', false)
+    ctx.strokeStyle = INK
+    ctx.lineWidth = 4
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(ex - 30, -72); ctx.lineTo(ex - 10, -64)
+    ctx.moveTo(ex + 30, -72); ctx.lineTo(ex + 10, -64)
+    ctx.stroke()
+  }
+  ctx.strokeStyle = INK
+  ctx.lineWidth = 3.5
+  ctx.beginPath()
+  if (b.winding) ctx.ellipse(ex, -32, 10, 7, 0, 0, Math.PI * 2)
+  else ctx.arc(ex, -28, 12, Math.PI + 0.4, -0.4)
+  ctx.stroke()
   ctx.restore()
 }
