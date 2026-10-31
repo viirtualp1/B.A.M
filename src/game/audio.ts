@@ -1,6 +1,6 @@
 export type Sfx =
   | 'jump' | 'fish' | 'stomp' | 'dash' | 'hurt' | 'switch' | 'bounce'
-  | 'yarn' | 'miss' | 'key' | 'crack' | 'bell' | 'rescue' | 'clear' | 'locked' | 'land'
+  | 'yarn' | 'miss' | 'key' | 'crack' | 'bell' | 'rescue' | 'clear' | 'locked' | 'land' | 'tick' | 'ready'
 
 // Each level gets its own little tune: semitone offsets from the root, null = rest.
 const SONGS: { root: number; tempo: number; melody: (number | null)[]; bass: number[] }[] = [
@@ -96,6 +96,8 @@ class Audio {
       case 'switch': this.tone(660, 1320, 0.09, 'sine', 0.12); this.tone(990, 1980, 0.12, 'sine', 0.08, 0.07); break
       case 'bounce': this.tone(180, 820, 0.22, 'sine', 0.16); break
       case 'yarn': this.tone(600, 1100, 0.07, 'triangle', 0.1); this.noise(0.05, 0.04, 3000); break
+      case 'tick': this.tone(1800, 1700, 0.04, 'square', 0.04); break
+      case 'ready': this.tone(1200, 1600, 0.06, 'sine', 0.05); break
       case 'miss': this.tone(300, 220, 0.08, 'triangle', 0.06); break
       case 'crack': this.noise(0.2, 0.18, 700); this.tone(200, 80, 0.15, 'square', 0.05); break
       case 'locked': this.tone(220, 200, 0.1, 'square', 0.05); this.tone(180, 160, 0.12, 'square', 0.05, 0.1); break

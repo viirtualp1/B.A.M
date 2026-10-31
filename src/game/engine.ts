@@ -29,6 +29,7 @@ export interface Player extends Body {
   jumpBuf: number
   canDash: boolean
   dashT: number
+  dashCd: number
   dashDir: { x: number; y: number }
   lockT: number
   inv: number
@@ -50,7 +51,9 @@ export interface Seed { x: number; y: number; vx: number; t: number }
 
 export interface Enemy extends Body { kind: EnemyKind; dir: 1 | -1; alive: boolean; squash: number; t: number; x0: number; y0: number; timer: number }
 export interface Candy { x: number; y: number; taken: boolean; t: number; hue: number }
-export interface Orb { x: number; y: number; inside: boolean; flash: number }
+export interface Orb { x: number; y: number; inside: boolean; flash: number; timed: boolean }
+export interface Crate extends Body { x0: number; y0: number; lost: number }
+export interface Plate { tx: number; ty: number; pressed: boolean; open: number }
 export interface Checkpoint { x: number; y: number; active: boolean; t: number }
 export interface Cage { x: number; y: number; cat: CatName; open: boolean; t: number }
 export interface KeyItem { x: number; y: number; taken: boolean }
@@ -82,6 +85,11 @@ export class Game {
   signNear: { sign: SignDef; a: number } | null = null
   hooks: Hook[] = []
   orbs: Orb[] = []
+  crates: Crate[] = []
+  plates: Plate[] = []
+  gatePlate = new Map<string, number>()
+  swTimer = 0
+  private tickT = 0
   checkpoints: Checkpoint[] = []
   goal: { x: number; y: number } | null = null
   cage: Cage | null = null
@@ -234,6 +242,10 @@ export class Game {
     this.crumbles.clear()
     this.jellies.clear()
     this.ghost.clear()
+    this.crates = []
+    this.plates = []
+    this.gatePlate.clear()
+    this.swTimer = 0
     this.particles = []
     this.sw = 0
     this.clearT = 0
@@ -252,7 +264,14 @@ export class Game {
             this.platforms.push({ x: tx * T, y: ty * T, w: 3 * T, h: 16, x0: tx * T, y0: ty * T, axis: c === 'm' ? 'x' : 'y', dx: 0, dy: 0, phase: 0 })
             break
           case 'o': this.hooks.push({ x: cx, y: cy }); break
-          case 'S': this.orbs.push({ x: cx, y: cy, inside: false, flash: 0 }); break
+          case 'S': case 'T': this.orbs.push({ x: cx, y: cy, inside: false, flash: 0, timed: c === 'T' }); break
+          case 'K':
+            this.crates.push({
+              x: tx * T + 1, y: ty * T + 2, w: T - 2, h: T - 2, vx: 0, vy: 0, grounded: false, hitL: false, hitR: false, hitTop: false,
+              gtx: 0, gty: 0, x0: tx * T + 1, y0: ty * T + 2, lost: 0,
+            })
+            break
+          case '_': this.plates.push({ tx, ty, pressed: false, open: 0 }); clear = false; break
           case 'k': this.key = { x: cx, y: cy, taken: false }; break
           case 'F': this.checkpoints.push({ x: cx, y: (ty + 1) * T, active: false, t: 0 }); break
           case 'G': this.goal = { x: cx, y: (ty + 1) * T }; break
@@ -269,6 +288,17 @@ export class Game {
       }
     }
 
+    for (let ty = 0; ty < this.H; ty++)
+      for (let tx = 0; tx < this.W; tx++) {
+        if (this.grid[ty][tx] !== '|') continue
+        let best = -1
+        let bd = Infinity
+        this.plates.forEach((pl, i) => {
+          const d = Math.abs(pl.tx - tx) + Math.abs(pl.ty - ty) * 0.5
+          if (d < bd) { bd = d; best = i }
+        })
+        this.gatePlate.set(k(tx, ty), best)
+      }
     this.respawn = { ...this.start }
     this.player = this.makePlayer(this.start.x, this.start.y)
     this.followers = this.levels.slice(0, i).map((l) => l.cat).filter((c): c is CatName => !!c)
@@ -299,7 +329,7 @@ export class Game {
   private makePlayer(x: number, y: number): Player {
     return {
       x, y, w: 26, h: 30, vx: 0, vy: 0, grounded: false, hitL: false, hitR: false, hitTop: false, gtx: 0, gty: 0,
-      facing: 1, coyote: 0, jumpBuf: 0, canDash: true, dashT: 0, dashDir: { x: 1, y: 0 }, lockT: 0, inv: 0,
+      facing: 1, coyote: 0, jumpBuf: 0, canDash: true, dashT: 0, dashCd: 0, dashDir: { x: 1, y: 0 }, lockT: 0, inv: 0,
       noCut: false, onWallL: false, onWallR: false, grapple: null, sx: 1, sy: 1, runT: 0, ghosts: [], plat: null,
     }
   }
@@ -307,8 +337,10 @@ export class Game {
   // ───────────────────────── tiles ─────────────────────────
 
   char(tx: number, ty: number): string {
-    if (ty < 0 || ty >= this.H) return ' '
     if (tx < 0 || tx >= this.W) return '#'
+    // walls that reach the top row continue upward, so they can't be climbed over
+    if (ty < 0) return this.grid[0][tx] === '#' || this.grid[0][tx] === 'P' || this.grid[0][tx] === 'B' ? this.grid[0][tx] : ' '
+    if (ty >= this.H) return ' '
     return this.grid[ty][tx]
   }
 
@@ -318,8 +350,14 @@ export class Game {
       case '#': case 'C': case 'J': return true
       case 'P': return this.sw === 0 && !(forPlayer && this.ghost.has(k(tx, ty)))
       case 'B': return this.sw === 1 && !(forPlayer && this.ghost.has(k(tx, ty)))
+      case '|': return !this.gateOpen(tx, ty) && !(forPlayer && this.ghost.has(k(tx, ty)))
       default: return false
     }
+  }
+
+  gateOpen(tx: number, ty: number): boolean {
+    const i = this.gatePlate.get(k(tx, ty)) ?? -1
+    return i >= 0 && this.plates[i].pressed
   }
 
   oneWay(tx: number, ty: number): boolean {
@@ -338,6 +376,7 @@ export class Game {
 
   private moveBody(b: Body, dt: number, isPlayer: boolean): void {
     b.hitL = b.hitR = b.hitTop = false
+    const wasGrounded = b.grounded
     b.grounded = false
     const dashing = isPlayer && this.player.dashT > 0
 
@@ -353,9 +392,23 @@ export class Game {
         b.vx = 0
         break
       }
+      for (const c of this.crates) {
+        if (c === b || !overlap(b, c)) continue
+        const fromLeft = b.x + b.w / 2 < c.x + c.w / 2
+        if (isPlayer && wasGrounded && c.grounded) {
+          const want = fromLeft ? b.x + b.w - c.x : b.x - (c.x + c.w)
+          this.pushCrate(c, Math.sign(want) * Math.min(Math.abs(want), 130 * dt))
+        }
+        if (!overlap(b, c)) continue
+        const pushing = isPlayer && wasGrounded && c.grounded
+        if (fromLeft) { b.x = c.x - b.w; b.hitR = !pushing } else { b.x = c.x + c.w; b.hitL = !pushing }
+        // keep a steady walking-push speed instead of stopping dead every frame
+        b.vx = pushing ? Math.sign(b.vx) * Math.min(Math.abs(b.vx), 130) : 0
+      }
     }
 
     const prevBottom = b.y + b.h
+    const prevTop = b.y
     b.y += b.vy * dt
     const x0 = Math.floor((b.x + 0.5) / T)
     const x1 = Math.floor((b.x + b.w - 0.5) / T)
@@ -373,6 +426,16 @@ export class Game {
         b.grounded = true
         b.gtx = hit
         b.gty = ty
+      }
+      for (const c of this.crates) {
+        if (c === b || b.x + b.w <= c.x + 1 || b.x >= c.x + c.w - 1) continue
+        if (prevBottom <= c.y + 1 && b.y + b.h >= c.y) {
+          b.y = c.y - b.h
+          b.vy = 0
+          b.grounded = true
+          b.gtx = -1
+          b.gty = -1
+        }
       }
       if (isPlayer) {
         this.player.plat = null
@@ -398,6 +461,29 @@ export class Game {
         b.hitTop = true
         break
       }
+      for (const c of this.crates) {
+        if (c === b || b.x + b.w <= c.x + 1 || b.x >= c.x + c.w - 1) continue
+        if (prevTop >= c.y + c.h - 1 && b.y < c.y + c.h) {
+          b.y = c.y + c.h
+          b.vy = 0
+          b.hitTop = true
+        }
+      }
+    }
+  }
+
+  private pushCrate(c: Crate, dx: number): void {
+    if (dx === 0) return
+    c.x += dx
+    const tx = dx > 0 ? Math.floor((c.x + c.w - 0.001) / T) : Math.floor(c.x / T)
+    for (let ty = Math.floor((c.y + 0.5) / T); ty <= Math.floor((c.y + c.h - 0.5) / T); ty++) {
+      if (!this.solid(tx, ty, false)) continue
+      c.x = dx > 0 ? tx * T - c.w : (tx + 1) * T
+      return
+    }
+    for (const o of this.crates) {
+      if (o === c || !overlap(c, o)) continue
+      c.x = dx > 0 ? o.x - c.w : o.x + o.w
     }
   }
 
@@ -449,6 +535,7 @@ export class Game {
     }
 
     this.updatePlatforms(dt)
+    this.updateSwitchesAndGates(dt)
     this.updatePlayer(dt)
     this.updateEnemies(dt)
     this.updateSeeds(dt)
@@ -485,7 +572,8 @@ export class Game {
       else this.attachGrapple()
     }
 
-    if (I.hit('dash') && p.canDash && p.dashT <= 0) {
+    p.dashCd -= dt
+    if (I.hit('dash') && p.canDash && p.dashT <= 0 && p.dashCd <= 0) {
       let dx = dir
       let dy = dirY
       if (dx === 0 && dy === 0) dx = p.facing
@@ -493,6 +581,7 @@ export class Game {
       const len = Math.hypot(dx, dy)
       p.dashDir = { x: dx / len, y: dy / len }
       p.dashT = PHYS.dashTime
+      p.dashCd = PHYS.dashTime + PHYS.dashCooldown
       p.canDash = false
       p.grapple = null
       p.noCut = false
@@ -653,6 +742,8 @@ export class Game {
       if (!overlap(p, { x: tx * T, y: ty * T, w: T, h: T })) this.ghost.delete(key)
     }
 
+    const ready = p.canDash && p.dashCd <= 0
+    if (ui.dashReady !== ready) ui.dashReady = ready
     this.pushTrail()
   }
 
@@ -733,6 +824,8 @@ export class Game {
     this.sw = 0
     this.ghost.clear()
     this.seeds = []
+    this.swTimer = 0
+    this.crates.forEach((c) => this.resetCrate(c))
     for (const o of this.orbs) o.inside = false
   }
 
@@ -822,7 +915,7 @@ export class Game {
         }
         case 'shooter': {
           if (near) e.dir = pcx > ecx ? 1 : -1
-          e.timer -= dt
+          e.timer = near ? e.timer - dt : Math.max(e.timer, 0.8)
           if (e.timer <= 0 && near) {
             e.timer = 2
             this.seeds.push({ x: ecx + e.dir * 14, y: e.y + 12, vx: e.dir * PHYS.seedSpeed, t: 0 })
@@ -880,9 +973,10 @@ export class Game {
 
     for (const gm of this.gems) {
       if (gm.t > 0) { gm.t -= dt; continue }
-      if (Math.hypot(gm.x - cx, gm.y - cy) > 26 || (p.canDash && p.dashT <= 0)) continue
+      if (Math.hypot(gm.x - cx, gm.y - cy) > 26 || (p.canDash && p.dashT <= 0 && p.dashCd <= 0)) continue
       gm.t = PHYS.gemRespawn
       p.canDash = true
+      p.dashCd = 0
       p.dashT = 0
       this.sfx('switch')
       this.buzz('tap')
@@ -899,8 +993,12 @@ export class Game {
 
     for (const o of this.orbs) {
       o.flash = Math.max(0, o.flash - dt * 2)
-      const inside = overlap(p, { x: o.x - 16, y: o.y - 16, w: 32, h: 32 })
-      if (inside && !o.inside) this.toggleSwitch(o)
+      const inside = overlap(p, { x: o.x - 20, y: o.y - 20, w: 40, h: 40 })
+      if (inside && !o.inside) {
+        this.toggleSwitch(o)
+        this.swTimer = o.timed ? PHYS.timedSwitch : 0
+        this.tickT = 0
+      }
       o.inside = inside
     }
 
@@ -959,7 +1057,10 @@ export class Game {
     this.sw = this.sw === 0 ? 1 : 0
     o.flash = 1
     const p = this.player
-    this.ghost.clear()
+    for (const key of [...this.ghost]) {
+      const [gx, gy] = key.split(',').map(Number)
+      if (this.char(gx, gy) !== '|') this.ghost.delete(key)
+    }
     for (let ty = Math.floor(p.y / T); ty <= Math.floor((p.y + p.h - 0.01) / T); ty++)
       for (let tx = Math.floor(p.x / T); tx <= Math.floor((p.x + p.w - 0.01) / T); tx++) {
         const c = this.char(tx, ty)
@@ -973,6 +1074,60 @@ export class Game {
       const a = (i / 12) * Math.PI * 2
       this.spawn(o.x, o.y, Math.cos(a) * 260, Math.sin(a) * 260, 0.5, 5, col, 'star', 0)
     }
+  }
+
+  private updateSwitchesAndGates(dt: number): void {
+    if (this.swTimer > 0) {
+      this.swTimer -= dt
+      this.tickT -= dt
+      if (this.tickT <= 0 && this.swTimer > 0) {
+        this.tickT = this.swTimer < 1.2 ? 0.2 : 0.5
+        this.sfx('tick')
+      }
+      if (this.swTimer <= 0) {
+        this.swTimer = 0
+        const o = this.orbs.find((x) => x.timed)
+        if (o) this.toggleSwitch(o)
+      }
+    }
+
+    const bodies: Body[] = [this.player, ...this.crates]
+    for (const pl of this.plates) {
+      const was = pl.pressed
+      pl.pressed = bodies.some((b) => b.x + b.w > pl.tx * T + 6 && b.x < (pl.tx + 1) * T - 6 && Math.abs(b.y + b.h - (pl.ty + 1) * T) < 3)
+      pl.open += ((pl.pressed ? 1 : 0) - pl.open) * Math.min(1, dt * 12)
+      if (was !== pl.pressed) {
+        this.sfx(pl.pressed ? 'switch' : 'locked')
+        if (pl.pressed) this.buzz('tap')
+        if (!pl.pressed) {
+          // a closing gate never traps Rosie: tiles she's standing in stay passable until she leaves
+          const p = this.player
+          for (const [key, i] of this.gatePlate) {
+            if (this.plates[i] !== pl) continue
+            const [tx, ty] = key.split(',').map(Number)
+            if (overlap(p, { x: tx * T, y: ty * T, w: T, h: T })) this.ghost.add(key)
+          }
+        }
+      }
+    }
+
+    for (const c of this.crates) {
+      c.vx = 0
+      c.vy = Math.min(c.vy + PHYS.gravity * dt, PHYS.maxFall)
+      this.moveBody(c, dt, false)
+      if (c.y > this.H * T + 60) {
+        c.lost += dt
+        if (c.lost > 0.6) this.resetCrate(c)
+      }
+    }
+  }
+
+  private resetCrate(c: Crate): void {
+    c.x = c.x0
+    c.y = c.y0
+    c.vy = 0
+    c.lost = 0
+    for (let i = 0; i < 6; i++) this.spawn(c.x + c.w / 2, c.y + c.h / 2, (Math.random() - 0.5) * 200, -Math.random() * 200, 0.5, 5, '#ffffff', 'star', 200)
   }
 
   private updateTiles(dt: number): void {

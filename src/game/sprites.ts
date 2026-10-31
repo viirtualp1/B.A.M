@@ -476,7 +476,7 @@ export function drawShooter(ctx: Ctx, x: number, y: number, dir: number, t: numb
   ctx.moveTo(0, -12)
   ctx.quadraticCurveTo(-3, -18, 0, -24)
   ctx.stroke()
-  const puff = 1 + Math.max(0, 0.4 - charge) * 0.5
+  const puff = 1 + Math.max(0, Math.min(0.4, 0.4 - charge)) * 0.5
   ctx.save()
   ctx.translate(0, -28)
   ctx.rotate(Math.sin(t * 2) * 0.1)

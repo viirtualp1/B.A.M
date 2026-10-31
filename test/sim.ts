@@ -65,13 +65,15 @@ function beam(level: number, tx: number, ty: number, ok: (g: Game) => boolean, s
   return null
 }
 
+let lastScript: Seg[] = []
+
 function section(name: string, level: number, tx: number, ty: number, ok: (g: Game) => boolean, opts: { tries?: number; len?: number; setup?: (g: Game) => void; target?: (g: Game) => number; wait?: boolean } = {}): void {
   const tries = opts.tries ?? 1500
   let wins = 0
   let first = -1
   for (let i = 0; i < tries; i++) {
-    const r = sim(level, tx, ty, [...(opts.wait ? [{ d: Math.random() * 7, hold: [] as Action[] }] : []), ...randomScript(opts.len ?? 14)], ok, opts.setup)
-    if (r.pass) { wins++; if (first < 0) first = i }
+    const r = sim(level, tx, ty, lastScript = [...(opts.wait ? [{ d: Math.random() * 7, hold: [] as Action[] }] : []), ...randomScript(opts.len ?? 14)], ok, opts.setup)
+    if (r.pass) { wins++; if (first < 0) { first = i; if (process.env.SHOW) console.log(JSON.stringify(lastScript)) } }
   }
   if (wins === 0) {
     const segs = beam(level, tx, ty, ok, opts.setup, opts.target)
@@ -98,24 +100,44 @@ if (L(1)) {
 if (L(2)) {
   section('L2 yarn chain', 1, 10, 11, (g) => X(g) > 35 && Y(g) < 12)
   section('L2 crystal midair', 1, 41, 11, (g) => X(g) > 65 && Y(g) < 12)
-  section('L2 gems + platform', 1, 79, 11, (g) => X(g) > 101 && Y(g) < 12, { wait: true, tries: 6000 })
-  section('L2 lift → key', 1, 104, 11, () => ui.hasKey, { target: (g) => -Math.hypot(g.player.x - 114.5 * T, g.player.y - 4.5 * T) / T })
+  section('L2 gems', 1, 79, 11, (g) => X(g) > 101 && Y(g) < 12)
   section('L2 yarn over thorns', 1, 117, 11, (g) => X(g) > 134 && Y(g) < 12)
-  section('L2 cage', 1, 135, 11, () => ui.screen === 'clear', { setup: () => (ui.hasKey = true) })
+  section('L2 goal', 1, 135, 11, () => ui.screen === 'clear')
 }
 if (L(3)) {
-  section('L3 spiky tunnel', 2, 3, 11, (g) => X(g) > 27)
-  section('L3 jelly → ledge', 2, 36, 11, (g) => X(g) > 44 && Y(g) < 5)
-  section('L3 crystal rhythm', 2, 47, 4, (g) => X(g) > 61 && Y(g) < 12)
-  section('L3 spikies + spitter', 2, 62, 11, (g) => X(g) > 88)
-  section('L3 gem chain', 2, 96, 11, (g) => X(g) > 123 && Y(g) < 12)
-  section('L3 to goal', 2, 124, 11, () => ui.screen === 'clear')
+  section('L3 clock race', 2, 38, 11, (g) => X(g) > 64 && Y(g) < 12)
+  section('L3 stairs after crystal', 2, 77, 11, (g) => X(g) > 88 && Y(g) < 6, { setup: (g) => (g.sw = 1) })
+  section('L3 plateau → checkpoint', 2, 89, 5, (g) => X(g) > 97)
+}
+if (only === 'cheat') {
+  // These must FAIL: the puzzles should not be skippable without the crate.
+  const noCrates = (g: Game): void => { g.crates = [] }
+  section('cheat: L3 crystal w/o crate', 2, 67, 11, (g) => g.sw === 1, { setup: noCrates, tries: 4000 })
+  section('cheat: L3 key w/o crate', 2, 97, 11, () => ui.hasKey, { setup: noCrates, tries: 4000 })
+  section('cheat: L5 clock w/o crate', 4, 125, 11, (g) => g.sw === 1, { setup: noCrates, tries: 4000 })
+  section('cheat: L3 gate 1 w/o crate', 2, 3, 11, (g) => X(g) > 19, { setup: noCrates, tries: 3000 })
 }
 if (L(4)) {
-  section('L4 chimney', 3, 3, 11, (g) => X(g) > 22 && Y(g) < 2)
-  section('L4 dash gaps', 3, 27, 1, (g) => X(g) > 47 && Y(g) < 12)
-  section('L4 crystal stairs', 3, 48, 11, (g) => X(g) > 62 && Y(g) < 4)
-  section('L4 lift + yarn + gem', 3, 65, 11, (g) => X(g) > 101 && Y(g) < 12, { wait: true, tries: 6000 })
-  section('L4 key room', 3, 101, 11, () => ui.hasKey, { target: (g) => -Math.hypot(g.player.x - 109.5 * T, g.player.y - 11 * T) / T })
-  section('L4 roof cage', 3, 113, 11, () => ui.screen === 'clear', { setup: () => (ui.hasKey = true), len: 18 })
+  section('L4 spiky tunnel', 3, 3, 11, (g) => X(g) > 27)
+  section('L4 jelly → ledge', 3, 36, 11, (g) => X(g) > 44 && Y(g) < 5)
+  section('L4 crystal rhythm', 3, 47, 4, (g) => X(g) > 61 && Y(g) < 12)
+  section('L4 spikies + spitter', 3, 62, 11, (g) => X(g) > 88)
+  section('L4 gem chain', 3, 96, 11, (g) => X(g) > 123 && Y(g) < 12)
+  section('L4 clock race → goal', 3, 123, 11, () => ui.screen === 'clear')
+}
+if (L(5)) {
+  section('L5 timed stones', 4, 3, 11, (g) => X(g) > 25 && Y(g) < 12)
+  section('L5 to the crate', 4, 28, 11, (g) => X(g) > 39)
+  section('L5 chimney', 4, 53, 11, (g) => X(g) > 67 && Y(g) < 12)
+  section('L5 swing pink/blue', 4, 76, 11, (g) => X(g) > 101 && Y(g) < 12, { len: 18 })
+  section('L5 gems over thorns', 4, 101, 11, (g) => X(g) > 120 && Y(g) < 12)
+  section('L5 after the pink wall → goal', 4, 141, 11, () => ui.screen === 'clear')
+}
+if (L(6)) {
+  section('L6 chimney', 5, 3, 11, (g) => X(g) > 22 && Y(g) < 2)
+  section('L6 dash gaps', 5, 27, 1, (g) => X(g) > 47 && Y(g) < 12)
+  section('L6 crystal stairs', 5, 48, 11, (g) => X(g) > 62 && Y(g) < 4)
+  section('L6 lift + yarn + gem', 5, 65, 11, (g) => X(g) > 101 && Y(g) < 12, { wait: true })
+  section('L6 key room', 5, 101, 11, () => ui.hasKey, { target: (g) => -Math.hypot(g.player.x - 109.5 * T, g.player.y - 11 * T) / T })
+  section('L6 roof cage', 5, 113, 11, () => ui.screen === 'clear', { setup: () => (ui.hasKey = true), len: 18 })
 }

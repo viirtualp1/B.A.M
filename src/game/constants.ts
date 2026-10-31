@@ -29,6 +29,8 @@ export const PHYS = {
   spikySpeed: 45,
   seedSpeed: 230,
   gemRespawn: 2.5,
+  dashCooldown: 0.45,
+  timedSwitch: 3.5,
 }
 
 export const MAX_HEARTS = 3

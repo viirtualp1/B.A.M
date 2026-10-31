@@ -19,7 +19,7 @@ export function trace(level: number, tx: number, ty: number, segs: [number, Acti
       ;(g as Any).update(STEP)
       g.input.endStep()
       tt += STEP
-      if (i % 6 === 0) console.log(`t=${tt.toFixed(2)} x=${(p.x / T).toFixed(2)} y=${(p.y / T).toFixed(2)} vx=${p.vx.toFixed(0)} vy=${p.vy.toFixed(0)} g=${p.grounded} sw=${g.sw} dash=${p.canDash} hearts=${ui.hearts} [${hold.join(',')}]`)
+      if (process.env.TRACE && i % 6 === 0) console.log(`t=${tt.toFixed(2)} x=${(p.x / T).toFixed(2)} y=${(p.y / T).toFixed(2)} vx=${p.vx.toFixed(0)} vy=${p.vy.toFixed(0)} g=${p.grounded} sw=${g.sw} dash=${p.canDash} hearts=${ui.hearts} [${hold.join(',')}]`)
     }
     hold.forEach((a) => g.input.release(a))
   }

@@ -202,6 +202,55 @@ function drawToggleBlock(ctx: Ctx, x: number, y: number, pink: boolean, active: 
   }
 }
 
+function drawGate(ctx: Ctx, x: number, y: number, open: number, top: boolean): void {
+  const h = T * (1 - open)
+  if (top) {
+    ctx.fillStyle = '#ffd88a'
+    rr(ctx, x + 2, y - 6, T - 4, 8, 3); ctx.fill()
+    ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke()
+  }
+  if (h < 1) return
+  for (const bx of [x + 9, x + 20, x + 31]) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(bx - 4, y, 8, h)
+    ctx.clip()
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(bx - 4, y, 8, T)
+    ctx.fillStyle = '#ff6fae'
+    for (let s = -8; s < T; s += 10) {
+      ctx.beginPath()
+      ctx.moveTo(bx - 4, y + s); ctx.lineTo(bx + 4, y + s - 6); ctx.lineTo(bx + 4, y + s - 1); ctx.lineTo(bx - 4, y + s + 5)
+      ctx.fill()
+    }
+    ctx.restore()
+    ctx.lineWidth = 2; ctx.strokeStyle = INK
+    rr(ctx, bx - 4, y, 8, h, 3); ctx.stroke()
+  }
+}
+
+function drawPlate(ctx: Ctx, x: number, y: number, pressed: boolean): void {
+  const b = y + T
+  ctx.fillStyle = '#c9b6d6'
+  rr(ctx, x + 3, b - 7, T - 6, 7, [3, 3, 0, 0]); ctx.fill()
+  ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke()
+  const capH = pressed ? 3 : 8
+  ctx.fillStyle = pressed ? '#7ddc7a' : '#ff7fae'
+  rr(ctx, x + 8, b - 7 - capH, T - 16, capH + 1, [5, 5, 0, 0]); ctx.fill(); ctx.stroke()
+}
+
+function drawCrate(ctx: Ctx, x: number, y: number, w: number, h: number): void {
+  ctx.fillStyle = '#e9b97f'
+  rr(ctx, x, y, w, h, 6); ctx.fill()
+  ctx.fillStyle = '#f6d3a3'
+  rr(ctx, x + 4, y + 4, w - 8, h - 8, 4); ctx.fill()
+  ctx.lineWidth = 2.5; ctx.strokeStyle = INK
+  rr(ctx, x, y, w, h, 6); ctx.stroke()
+  ctx.lineWidth = 2; ctx.strokeStyle = '#c48a54'
+  rr(ctx, x + 4, y + 4, w - 8, h - 8, 4); ctx.stroke()
+  drawStar(ctx, x + w / 2, y + h / 2, 9, 0.3, '#ff9fcb')
+}
+
 function drawTiles(ctx: Ctx, g: Game, pal: Palette): void {
   const x0 = Math.max(0, Math.floor(g.cam.x / T) - 1)
   const x1 = Math.min(g.W - 1, Math.ceil((g.cam.x + g.viewW) / T) + 1)
@@ -270,6 +319,17 @@ function drawTiles(ctx: Ctx, g: Game, pal: Palette): void {
           else if (s.t < 0.6) drawCloudTile(ctx, x, y, '#fff4fb', (0.6 - s.t) * 0.8, 0)
           break
         }
+        case '|': {
+          const i = g.gatePlate.get(tx + ',' + ty) ?? -1
+          const open = i >= 0 ? g.plates[i].open : 0
+          drawGate(ctx, x, y, open, g.char(tx, ty - 1) !== '|')
+          break
+        }
+        case '_': {
+          const pl = g.plates.find((q) => q.tx === tx && q.ty === ty)
+          drawPlate(ctx, x, y, pl?.pressed ?? false)
+          break
+        }
         case 'P': drawToggleBlock(ctx, x, y, true, g.sw === 0); break
         case 'B': drawToggleBlock(ctx, x, y, false, g.sw === 1); break
       }
@@ -306,7 +366,7 @@ function drawHook(ctx: Ctx, g: Game, x: number, y: number, target: boolean): voi
   ctx.beginPath(); ctx.arc(x, y, 10, -2.4, -1.2); ctx.stroke()
 }
 
-function drawOrb(ctx: Ctx, g: Game, x: number, y: number, flash: number): void {
+function drawOrb(ctx: Ctx, g: Game, x: number, y: number, flash: number, timed: boolean): void {
   const col = g.sw === 0 ? '#ff8fc0' : '#76c2ff'
   const bob = Math.sin(g.time * 3) * 3
   ctx.globalAlpha = 0.3 + flash * 0.5
@@ -324,6 +384,18 @@ function drawOrb(ctx: Ctx, g: Game, x: number, y: number, flash: number): void {
   ctx.fillStyle = 'rgba(255,255,255,0.7)'
   ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(5, -3); ctx.lineTo(0, -1); ctx.lineTo(-5, -3); ctx.closePath(); ctx.fill()
   ctx.restore()
+  if (timed) {
+    // clock ring: dashed when idle, drains while the swap is running
+    ctx.lineWidth = 4
+    ctx.strokeStyle = INK
+    ctx.beginPath(); ctx.arc(x, y + bob, 21, 0, Math.PI * 2); ctx.stroke()
+    ctx.lineWidth = 2.5
+    ctx.strokeStyle = '#ffffff'
+    const frac = g.swTimer > 0 ? g.swTimer / 3.5 : 1
+    if (g.swTimer <= 0) ctx.setLineDash([4, 4])
+    ctx.beginPath(); ctx.arc(x, y + bob, 21, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.stroke()
+    ctx.setLineDash([])
+  }
 }
 
 function drawKey(ctx: Ctx, g: Game, x: number, y: number): void {
@@ -496,7 +568,7 @@ function drawPlayer(ctx: Ctx, g: Game): void {
   const flicker = p.inv > 0 && Math.floor(g.time * 20) % 2 === 0
   drawRosie(ctx, p.x + p.w / 2, p.y + p.h, {
     facing: p.facing, sx: p.sx, sy: p.sy, runT: p.runT, grounded: p.grounded, vy: p.vy,
-    canDash: p.canDash, alpha: flicker ? 0.35 : 1, blink: g.time % 3.4 < 0.12,
+    canDash: p.canDash && p.dashCd <= 0, alpha: flicker ? 0.35 : 1, blink: g.time % 3.4 < 0.12,
   })
 }
 
@@ -563,7 +635,8 @@ export function render(ctx: Ctx, g: Game): void {
   if (g.goal) drawGoal(ctx, g, g.goal.x, g.goal.y)
   drawTiles(ctx, g, pal)
   for (const h of g.hooks) drawHook(ctx, g, h.x, h.y, h === g.grappleTarget)
-  for (const o of g.orbs) drawOrb(ctx, g, o.x, o.y, o.flash)
+  for (const o of g.orbs) drawOrb(ctx, g, o.x, o.y, o.flash, o.timed)
+  for (const c of g.crates) drawCrate(ctx, c.x, c.y, c.w, c.h)
   for (const c of g.candies) if (!c.taken) drawCandy(ctx, c.x, c.y, c.t, c.hue)
   for (const gm of g.gems) drawGem(ctx, gm.x, gm.y, g.time, gm.t > 0)
   for (const pl of g.platforms) drawPlatform(ctx, pl.x, pl.y, pl.w, pl.h)

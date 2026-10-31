@@ -19,6 +19,7 @@ export const ui = reactive({
   muted: false,
   savedLevel: 0,
   gamepad: false,
+  dashReady: true,
   uiScale: loadUiScale(),
 })
 
