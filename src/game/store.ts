@@ -19,6 +19,7 @@ export const ui = reactive({
   justRescued: null as CatName | null,
   muted: false,
   levelKittens: [] as boolean[],
+  kittensPerWorld: [] as number[],
   bossHp: 0,
   hubFocus: 0,
   inputMode: 'keyboard' as InputMode,

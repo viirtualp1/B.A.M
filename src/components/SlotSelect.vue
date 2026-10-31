@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { SLOT_COUNT, deleteSlot, freshSave, kittenCount, persist, readSlot, saveState, type SaveData } from '../game/save'
 import { buzz } from '../game/haptics'
 import { t } from '../game/i18n'
+import { ui } from '../game/store'
 
 const props = defineProps<{ worlds: number }>()
 const emit = defineEmits<{ opened: []; back: [] }>()
@@ -46,7 +47,7 @@ function time(d: SaveData): string {
           <template v-if="d">
             <span class="stats">
               <span>★ {{ t('worldsDone', { a: d.cleared.filter(Boolean).length, b: worlds }) }}</span>
-              <span>{{ t('kittens') }}: {{ kittenCount(d) }}/{{ worlds * 3 }}</span>
+              <span>{{ t('kittens') }}: {{ kittenCount(d) }}/{{ ui.kittensPerWorld.reduce((a, b) => a + b, 0) }}</span>
               <span>{{ time(d) }}</span>
             </span>
           </template>

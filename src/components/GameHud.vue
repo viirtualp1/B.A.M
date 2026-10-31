@@ -22,7 +22,7 @@ defineEmits<{ pause: []; mute: [] }>()
         </svg>
         <span class="num">{{ ui.levelCandy }}/{{ ui.levelCandyTotal }}</span>
       </div>
-      <div class="chip kits" :aria-label="t('kittens')">
+      <div v-if="ui.levelKittens.length" class="chip kits" :aria-label="t('kittens')">
         <i v-for="(f, k) in ui.levelKittens" :key="k" :class="{ on: f }" />
       </div>
       <div v-if="ui.levelNeedsKey" class="chip key" :class="{ got: ui.hasKey }">

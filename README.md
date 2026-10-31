@@ -12,10 +12,27 @@ Built with Vue 3, Vite and TypeScript. The game itself is a hand-written canvas 
 
 ## Worlds
 
-1. **Candy Meadow** — jump, dash through cracked blocks, wall-jump up a chimney, melting clouds
-2. **Cloud Garden** — yarn swinging, crystals that swap pink/blue blocks mid-air, dash-refill gems, a lift to the key → **Billion**
-3. **Sugar Caves** — spikies (dash only), crystal rhythm jumps, a five-gem dash chain
-4. **Sunset Roofs** — everything together → **Million**
+Each world is built around one main mechanic, introduced safely, then twisted:
+
+1. **Candy Meadow** — jump, float (press jump again in mid-air), dash, wall-jump
+2. **Cloud Garden** — swing on yarn hooks
+3. **Toy Workshop** — push crates onto buttons, use them as steps → rescue **Billion**
+4. **Sugar Caves** — dash with recharge gems, cracked ceilings, spikies
+5. **Clock Tower** — clock crystals that swap blocks for a few seconds
+6. **Sunset Roofs** — everything at once → rescue **Million**
+7. **Storm Crown** — the Grumble King boss (slam, crystal-stairs and charge phases)
+
+Every world except the boss hides 3 kittens; they move into Rosie's house and unlock outfits in the wardrobe.
+
+## Saves
+
+Three save slots in the browser. Bells save the current spot, so *Continue* drops you back at the last bell.
+*Save code* in the house copies a text code that loads the same progress on another device.
+
+## Install (PWA)
+
+On iPhone: Safari → Share → *Add to Home Screen*. On Android: the *Install app* button on the title screen.
+The installed app runs full-screen, in landscape, and works offline.
 
 ## Develop
 
@@ -24,7 +41,8 @@ npm install
 npm run dev            # local dev server
 npm run build          # production build → dist/
 npm run build:single   # one self-contained HTML file → dist-single/
-npm test               # headless bot checks that every level section is passable
+npm test               # headless bot: every section, kitten and boss phase is reachable
+node … test/puzzles.ts # scripted crate puzzles (see test/)
 ```
 
 ## Layout

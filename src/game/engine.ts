@@ -175,6 +175,7 @@ export class Game {
 
   constructor() {
     ui.levelCount = this.levels.length
+    ui.kittensPerWorld = this.levels.map((l) => Math.min(KITTENS_PER_WORLD, l.grid.flat().filter((c) => c === 'n').length))
     this.loadLevel(0)
   }
 
@@ -247,8 +248,8 @@ export class Game {
     if (!this.canvas) return
     const w = window.innerWidth
     const h = window.innerHeight
-    // Short landscape phones get a closer camera so Rosie isn't tiny.
-    this.viewH = h < 500 ? 420 : VIEW_H
+    // Short landscape phones get a closer camera so Rosie isn't tiny; the boss arena always fits whole.
+    this.viewH = this.boss ? this.H * T : h < 500 ? 420 : VIEW_H
     this.viewW = Math.round(clamp((w / h) * this.viewH, 600, 1280))
     this.scale = Math.min(w / this.viewW, h / this.viewH)
     this.dpr = Math.min(2, window.devicePixelRatio || 1)
@@ -432,6 +433,8 @@ export class Game {
     ui.justRescued = null
     ui.levelKittens = this.kittens.map((kt) => kt.found)
     ui.bossHp = this.boss ? this.boss.hp : 0
+    this.resize()
+    this.snapCamera()
   }
 
   private snapCamera(): void {

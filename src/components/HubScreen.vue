@@ -18,6 +18,7 @@ const strip = ref<HTMLElement | null>(null)
 
 const d = computed(() => saveState.data!)
 const kittens = computed(() => kittenCount(saveState.data))
+const totalKittens = computed(() => ui.kittensPerWorld.reduce((a, b) => a + b, 0))
 const resume = computed(() => d.value.resume)
 
 function name(i: number): string {
@@ -76,7 +77,7 @@ onMounted(async () => {
   <section class="hub">
     <header class="top">
       <button class="chip" @click="emit('title')">‹ {{ t('menu') }}</button>
-      <div class="chip stat">{{ t('kittens') }} {{ kittens }}/{{ levels.length * 3 }}</div>
+      <div class="chip stat">{{ t('kittens') }} {{ kittens }}/{{ totalKittens }}</div>
       <div class="spacer" />
       <button class="chip" @click="panel = 'wardrobe'">{{ t('wardrobe') }}</button>
       <button class="chip" @click="openCode">{{ t('saveCode') }}</button>
@@ -98,7 +99,7 @@ onMounted(async () => {
           <span class="num">{{ i + 1 }}</span>
           <span class="wname">{{ i > d.unlocked ? t('locked') : name(i) }}</span>
           <span class="dots" :aria-label="t('kittens')">
-            <i v-for="(f, k) in d.kittens[i]" :key="k" :class="{ on: f }" />
+            <i v-for="(f, k) in d.kittens[i].slice(0, ui.kittensPerWorld[i] ?? 0)" :key="k" :class="{ on: f }" />
           </span>
           <span v-if="lv.cat" class="cat" :class="{ on: d.cleared[i] }">{{ t(lv.cat) }}</span>
           <span v-if="d.cleared[i]" class="star">★</span>
@@ -187,7 +188,7 @@ onMounted(async () => {
   position: relative;
   flex: 0 0 auto;
   width: clamp(120px, 17vw, 150px);
-  height: clamp(96px, 26vh, 124px);
+  height: clamp(112px, 30vh, 132px);
   scroll-snap-align: center;
   display: flex;
   flex-direction: column;
@@ -220,7 +221,7 @@ onMounted(async () => {
   font-weight: 900;
 }
 .star { position: absolute; top: 6px; right: 10px; font-size: 22px; color: var(--gold); -webkit-text-stroke: 1.5px var(--ink); }
-.wname { font-weight: 900; font-size: 14px; line-height: 1.1; background: rgba(255, 250, 244, 0.9); border-radius: 8px; padding: 2px 6px; }
+.wname { font-weight: 900; font-size: 13px; line-height: 1.1; max-width: 100%; background: rgba(255, 250, 244, 0.9); border-radius: 8px; padding: 2px 6px; }
 .dots { display: flex; gap: 4px; }
 .dots i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); background: rgba(255, 255, 255, 0.5); }
 .dots i.on { background: #ffb46b; }
